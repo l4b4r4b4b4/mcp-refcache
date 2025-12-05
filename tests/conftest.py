@@ -1,18 +1,11 @@
 """Pytest configuration and fixtures for mcp-refcache tests."""
 
-import asyncio
-from collections.abc import Generator
 from typing import Any
 
 import pytest
 
-
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an event loop for async tests."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+from mcp_refcache import AccessPolicy, Permission, PreviewConfig
+from mcp_refcache.models import PreviewStrategy, SizeMode
 
 
 @pytest.fixture
@@ -56,61 +49,44 @@ def user_namespace() -> str:
     return "user:test-user-456"
 
 
-# TODO: Add these fixtures once core classes are implemented
-#
-# @pytest.fixture
-# def cache() -> Generator[RefCache, None, None]:
-#     """Create a fresh in-memory cache for each test."""
-#     cache = RefCache(
-#         name="test-cache",
-#         backend="memory",
-#         default_namespace="test:unit",
-#     )
-#     yield cache
-#     cache.clear()
-#
-#
-# @pytest.fixture
-# async def async_cache() -> AsyncGenerator[RefCache, None]:
-#     """Create an async-compatible cache for each test."""
-#     cache = RefCache(
-#         name="test-async-cache",
-#         backend="memory",
-#         default_namespace="test:unit",
-#     )
-#     yield cache
-#     await cache.async_clear()
-#
-#
-# @pytest.fixture
-# def cache_with_namespaces() -> Generator[RefCache, None, None]:
-#     """Cache with multiple namespaces configured."""
-#     cache = RefCache(
-#         name="test-ns-cache",
-#         namespaces=[
-#             Namespace.PUBLIC,
-#             Namespace.session("test-session"),
-#             Namespace.user("test-user"),
-#             Namespace.custom("project:test"),
-#         ],
-#     )
-#     yield cache
-#     cache.clear()
-#
-#
-# @pytest.fixture
-# def restricted_policy() -> AccessPolicy:
-#     """Access policy where agent can execute but not read."""
-#     return AccessPolicy(
-#         user_permissions=Permission.FULL,
-#         agent_permissions=Permission.EXECUTE,
-#     )
-#
-#
-# @pytest.fixture
-# def read_only_policy() -> AccessPolicy:
-#     """Read-only access policy for both user and agent."""
-#     return AccessPolicy(
-#         user_permissions=Permission.READ,
-#         agent_permissions=Permission.READ,
-#     )
+@pytest.fixture
+def default_preview_config() -> PreviewConfig:
+    """Default preview configuration."""
+    return PreviewConfig()
+
+
+@pytest.fixture
+def character_preview_config() -> PreviewConfig:
+    """Character-based preview configuration."""
+    return PreviewConfig(
+        size_mode=SizeMode.CHARACTER,
+        max_size=2000,
+        default_strategy=PreviewStrategy.TRUNCATE,
+    )
+
+
+@pytest.fixture
+def public_policy() -> AccessPolicy:
+    """Public access policy - full access for everyone."""
+    return AccessPolicy(
+        user_permissions=Permission.FULL,
+        agent_permissions=Permission.FULL,
+    )
+
+
+@pytest.fixture
+def restricted_policy() -> AccessPolicy:
+    """Restricted policy - agent can execute but not read."""
+    return AccessPolicy(
+        user_permissions=Permission.FULL,
+        agent_permissions=Permission.EXECUTE,
+    )
+
+
+@pytest.fixture
+def read_only_policy() -> AccessPolicy:
+    """Read-only access policy for both user and agent."""
+    return AccessPolicy(
+        user_permissions=Permission.READ,
+        agent_permissions=Permission.READ,
+    )
