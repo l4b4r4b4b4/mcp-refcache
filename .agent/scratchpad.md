@@ -64,10 +64,91 @@ Reference-based caching library for FastMCP servers. Enables:
 5. **Flexible TTL**: Per-entry or cache-level defaults
 
 ### 🔧 Remaining Tasks - Phase 2
+
+#### Priority 1: Access Control Architecture (NEW)
+- [ ] Design sophisticated permission/access control system
+- [ ] Decide on architecture: RBAC, ABAC, ACL, or hybrid
+- [ ] Support actual user/agent IDs, not just generic roles
+- [ ] Namespace ownership and session isolation
+- [ ] Audit logging for access events
+
+#### Priority 2: Context & Preview
 - [ ] Implement context limiting (`context.py`) - token counting with tiktoken
 - [ ] Implement preview strategies (`preview.py`) - adaptive sampling with step size
 - [ ] Add namespace hierarchy (`namespaces.py`) - inheritance and validation
+
+#### Priority 3: Integration
 - [ ] Add FastMCP integration (`tools/`) - optional dependency
+
+---
+
+## Access Control Architecture - Planning Notes
+
+### Current State
+- Simple role-based: `actor: Literal["user", "agent"]`
+- `AccessPolicy` has `user_permissions` and `agent_permissions` (Permission flags)
+- No actual user/agent ID tracking
+- No per-entry access lists
+- No namespace ownership enforcement
+
+### Requirements to Consider
+1. **Identity**: Support `user:<id>` and `agent:<id>` patterns
+2. **Namespace ownership**: `session:<id>` only accessible by that session
+3. **Flexible permissions**: Beyond just user/agent split
+4. **Audit trail**: Track who accessed what
+5. **Delegation**: Allow users to grant agents specific permissions
+6. **Future-proof**: Don't paint ourselves into a corner
+
+### Architecture Options to Evaluate
+
+#### Option A: RBAC (Role-Based Access Control)
+- Roles: `admin`, `user`, `agent`, `readonly`, etc.
+- Users/agents assigned to roles
+- Permissions attached to roles
+- Simple but less flexible
+
+#### Option B: ABAC (Attribute-Based Access Control)
+- Policies based on attributes: user.id, resource.namespace, action, context
+- Very flexible but complex
+- Example: "Allow if user.id == resource.owner OR user.role == admin"
+
+#### Option C: ACL (Access Control Lists)
+- Per-resource allow/deny lists
+- Simple to understand
+- Can get unwieldy at scale
+
+#### Option D: Hybrid (Recommended?)
+- RBAC for defaults (user/agent base permissions)
+- ACL for overrides (specific user/agent allow/deny)
+- ABAC-style policies for namespace ownership
+- Example:
+  ```python
+  class AccessPolicy:
+      # Role-based defaults
+      user_permissions: Permission
+      agent_permissions: Permission
+      
+      # ACL overrides
+      allowed_identities: set[str] | None  # "user:alice", "agent:claude"
+      denied_identities: set[str] | None
+      
+      # Ownership
+      owner: str | None  # "user:alice"
+      owner_permissions: Permission
+  ```
+
+### Questions to Answer in Next Session
+1. What's the right granularity? Per-cache, per-namespace, per-entry?
+2. How do we identify actors? String IDs? Structured objects?
+3. Do we need hierarchical permissions (inherit from parent namespace)?
+4. How does this integrate with MCP session context?
+5. What's the performance impact of permission checks?
+6. Do we need permission delegation (user grants agent access)?
+
+### Reference Material
+- Original BundesMCP code: `.agent/files/tmp/session/` (also role-based, no IDs)
+- MCP protocol session handling
+- Common patterns: AWS IAM, Kubernetes RBAC, PostgreSQL roles
 
 ## Architecture
 
@@ -174,6 +255,7 @@ public                          # Global, anyone can read
 - Python >=3.10 to match FastMCP compatibility
 - Reference archived BundesMCP code in `archive/bundesmcp-cache/` for implementation ideas
 - Archived code also copied to `.agent/files/tmp/session/` for easy reference
+- **Deterministic cache**: Use `RefCache(default_ttl=None)` for never-expiring entries
 
 ## Session Log
 
@@ -184,3 +266,5 @@ public                          # Global, anyone can read
 - Implemented @cached decorator for sync and async functions
 - 110 tests passing, 90% coverage
 - Updated .rules for Python library context (removed FastAPI/microservice specifics)
+- Identified need for sophisticated access control (user/agent IDs, not just roles)
+- Next session: Design access control architecture (RBAC/ABAC/ACL/hybrid)
