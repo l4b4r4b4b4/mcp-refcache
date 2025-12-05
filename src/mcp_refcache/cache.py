@@ -1,52 +1,47 @@
 import functools
-import time
+import hashlib
+import inspect
+import json
 import logging
 import os
-import threading
 import pickle
-import hashlib
+import threading
+import time
+from collections.abc import Callable
 from enum import Enum
-import json
-import inspect
-from pydantic import BaseModel, Field, ConfigDict
-
 from typing import (
+    Any,
+    Optional,
     TypeVar,
     Union,
-    Dict,
-    List,
-    Tuple,
-    Any,
-    Callable,
-    Optional,
     cast,
-    Set,
 )
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from .return_types import (
     InterpolationParams,
-    ValueReturnType,
+    PaginationParams,
     ReferenceReturnType,
     ReturnOptions,
-    PaginationParams,
+    ValueReturnType,
 )
-
 
 logger = logging.getLogger("mcp_cache")
 logger.setLevel(logging.DEBUG)
 
 # Enhanced JSONValue type to better document what's actually JSON-serializable
 JSONValue = Union[
-    None, bool, int, float, str, List["JSONValue"], Dict[str, "JSONValue"]
+    None, bool, int, float, str, list["JSONValue"], dict[str, "JSONValue"]
 ]
 
 # Then define CachableValue without direct self-reference
 CachableValue = Union[
     JSONValue,
     BaseModel,
-    Tuple[Any, ...],  # Tuples can be converted to lists
+    tuple[Any, ...],  # Tuples can be converted to lists
     Enum,  # Enums can be converted to their values
-    Set[Any],  # Sets can be converted to lists
+    set[Any],  # Sets can be converted to lists
 ]
 
 
@@ -68,7 +63,7 @@ def make_json_serializable(value: Any) -> JSONValue:
         # Try JSON serialization as a test
         try:
             json.dumps(value)
-            return cast(JSONValue, value)
+            return cast("JSONValue", value)
         except (TypeError, OverflowError):
             # If it can't be serialized, convert to string
             return str(value)
@@ -97,7 +92,7 @@ class PaginatedResponse(BaseModel):
         """String representation of the paginated response"""
         return f"Page {self.page}/{self.total_pages} ({self.total_items} items)"
 
-    def model_dump_for_mcp(self) -> Dict[str, Any]:
+    def model_dump_for_mcp(self) -> dict[str, Any]:
         """Custom serialization method for MCP transport layer"""
         return {
             "type": "paginated_response",
@@ -112,18 +107,17 @@ class PaginatedResponse(BaseModel):
 
 
 class CacheDefaultResponse(BaseModel):
-    """
-    Default response format combining reference ID with either value or preview
+    """Default response format combining reference ID with either value or preview
     to prevent context overflow for large responses.
     """
 
     ref_id: str = Field(description="Reference ID for the cached value")
     cache_name: str = Field(description="Name of the cache where the value is stored")
     tool_name: str = Field(description="Name of the tool that generated the value")
-    value: Optional[Any] = Field(
+    value: Any | None = Field(
         default=None, description="The actual value if small enough"
     )
-    preview: Optional[str] = Field(
+    preview: str | None = Field(
         default=None, description="Preview of the value if too large"
     )
     is_preview: bool = Field(
@@ -140,7 +134,7 @@ class CacheDefaultResponse(BaseModel):
             return f"Reference({self.ref_id[:8]}) with preview: {self.preview}"
         return f"Reference({self.ref_id[:8]}) with value"
 
-    def model_dump_for_mcp(self) -> Dict[str, Any]:
+    def model_dump_for_mcp(self) -> dict[str, Any]:
         """Custom serialization method for MCP transport layer"""
         return {
             "type": "cache_default_response",
@@ -154,8 +148,7 @@ class CacheDefaultResponse(BaseModel):
 
 
 class CacheReference(BaseModel):
-    """
-    Object representing a reference to a cached value without exposing any details.
+    """Object representing a reference to a cached value without exposing any details.
     """
 
     cache_name: str = Field(
@@ -183,7 +176,7 @@ class CacheReference(BaseModel):
         """String representation of the reference for debugging"""
         return f"CacheReference(id={self.ref_id[:8]}, cache={self.cache_name}, tool={self.tool_name})"
 
-    def model_dump_for_mcp(self) -> Dict[str, Any]:
+    def model_dump_for_mcp(self) -> dict[str, Any]:
         """Custom serialization method for MCP transport layer"""
         return {
             "type": "cache_reference",
@@ -196,8 +189,7 @@ class CacheReference(BaseModel):
 
 
 class CachePreview(BaseModel):
-    """
-    Separate class for previewing cached values without exposing the full reference.
+    """Separate class for previewing cached values without exposing the full reference.
 
     This provides a safe way to get a glimpse of what's in a cache without exposing
     the full value or reference details.
@@ -216,7 +208,7 @@ class CachePreview(BaseModel):
         """String representation of the preview"""
         return f"Preview({self.tool_name}): {self.preview_text}"
 
-    def model_dump_for_mcp(self) -> Dict[str, Any]:
+    def model_dump_for_mcp(self) -> dict[str, Any]:
         """Custom serialization method for MCP transport layer"""
         return {
             "type": "cache_preview",
@@ -226,8 +218,7 @@ class CachePreview(BaseModel):
 
 
 class CacheStats(BaseModel):
-    """
-    Statistics about cache usage and performance.
+    """Statistics about cache usage and performance.
 
     Tracks hits, misses, and other metrics to help optimize cache usage.
     """
@@ -242,8 +233,8 @@ class CacheStats(BaseModel):
         default=0, description="Current number of entries in cache"
     )
     total_references: int = Field(default=0, description="Current number of references")
-    max_size: Optional[int] = Field(description="Maximum cache size (entries)")
-    expiry_seconds: Optional[float] = Field(description="Entry expiry time in seconds")
+    max_size: int | None = Field(description="Maximum cache size (entries)")
+    expiry_seconds: float | None = Field(description="Entry expiry time in seconds")
 
     @property
     def hit_rate(self) -> str:
@@ -262,8 +253,7 @@ class CacheStats(BaseModel):
 
 
 class ToolsetCache:
-    """
-    Reusable caching mechanism for MCP toolsets with disk persistence for deterministic caches.
+    """Reusable caching mechanism for MCP toolsets with disk persistence for deterministic caches.
 
     Supports reference-based access, allowing values to be passed between tools without
     exposing the actual data, and different return types (full, preview, reference).
@@ -273,22 +263,19 @@ class ToolsetCache:
     BASE_CACHE_DIR = ".cache"
 
     # Class-level registry of all cache instances
-    _cache_registry: Dict[str, "ToolsetCache"] = {}
+    _cache_registry: dict[str, "ToolsetCache"] = {}
     _cache_implementation = None
 
     def __init__(
         self,
         name: str,
         deterministic: bool = False,
-        expiry_seconds: Union[
-            int, float, None
-        ] = 3600,  # Only used for non-deterministic caches
-        max_size: Optional[int] = 10000,
-        cache_dir: Optional[str] = None,  # Optional
-        flush_interval: Optional[int] = 60 * 60,  # 1 hour = 60 minutes = 3600 s
+        expiry_seconds: int | float | None = 3600,  # Only used for non-deterministic caches
+        max_size: int | None = 10000,
+        cache_dir: str | None = None,  # Optional
+        flush_interval: int | None = 60 * 60,  # 1 hour = 60 minutes = 3600 s
     ):
-        """
-        Initialize a cache for a specific toolset.
+        """Initialize a cache for a specific toolset.
 
         Parameters:
         - name: Name of the toolset for logging
@@ -323,13 +310,13 @@ class ToolsetCache:
         self.stats = {"hits": 0, "misses": 0, "expirations": 0, "references_used": 0}
 
         # Main cache storage: {key: (value, timestamp)}
-        self.cache: Dict[str, Tuple[Any, float, str]] = {}
+        self.cache: dict[str, tuple[Any, float, str]] = {}
 
         # Reference registry: {ref_id: cache_key}
-        self.reference_registry: Dict[str, str] = {}
+        self.reference_registry: dict[str, str] = {}
 
         # Track access order for LRU eviction policy
-        self.access_order: List[str] = []
+        self.access_order: list[str] = []
 
         # Thread lock for thread safety
         self._cache_lock = threading.RLock()
@@ -390,18 +377,16 @@ class ToolsetCache:
         """Get a cache instance by name"""
         return cls._cache_registry.get(name)
 
-    def _get_cache_key_for_ref(self, ref_id: str) -> Optional[str]:
-        """
-        Get the cache key for a reference ID.
+    def _get_cache_key_for_ref(self, ref_id: str) -> str | None:
+        """Get the cache key for a reference ID.
         Default implementation for in-memory cache.
         Subclasses may override for different storage backends.
         """
         return self.reference_registry.get(ref_id)
 
     @classmethod
-    def resolve_reference(cls, ref: Union[CacheReference, str, Dict[str, Any]]) -> Any:
-        """
-        Resolve a reference to its cached value.
+    def resolve_reference(cls, ref: CacheReference | str | dict[str, Any]) -> Any:
+        """Resolve a reference to its cached value.
         Reference can be:
         1. A CacheReference object
         2. A string reference ID
@@ -475,7 +460,7 @@ class ToolsetCache:
 
                 # Update stats
                 if hasattr(cache, "_update_stats_in_redis"):
-                    getattr(cache, "_update_stats_in_redis")(references_used=1)
+                    cache._update_stats_in_redis(references_used=1)
                 else:
                     # Use the standard stats update if available
                     if hasattr(cache, "stats"):
@@ -491,8 +476,7 @@ class ToolsetCache:
     def _paginate_value(
         self, value: Any, pagination: PaginationParams
     ) -> PaginatedResponse:
-        """
-        Paginate any value type, handling different data structures appropriately.
+        """Paginate any value type, handling different data structures appropriately.
         Returns a PaginatedResponse object.
         """
         # Default values
@@ -584,8 +568,7 @@ class ToolsetCache:
         )
 
     def _interpolate_value(self, value: Any, interpolation: InterpolationParams) -> Any:
-        """
-        Interpolate (sample) values from a collection based on interpolation parameters.
+        """Interpolate (sample) values from a collection based on interpolation parameters.
         Returns evenly spaced elements from list-like objects.
         """
         # If interpolation is disabled, return the original value
@@ -669,9 +652,8 @@ class ToolsetCache:
             return value
 
     @classmethod
-    def get_preview_for_reference(cls, ref: CacheReference) -> Optional[CachePreview]:
-        """
-        Get a preview for a reference, but only when explicitly requested.
+    def get_preview_for_reference(cls, ref: CacheReference) -> CachePreview | None:
+        """Get a preview for a reference, but only when explicitly requested.
         This keeps the reference and preview completely separate.
         """
         if "preview" not in ref.allowed_response_types:
@@ -696,8 +678,7 @@ class ToolsetCache:
 
     @classmethod
     def get_cache_for_tool(cls, toolset_name: str) -> "ToolsetCache":
-        """
-        Get the appropriate cache for a given toolset.
+        """Get the appropriate cache for a given toolset.
 
         This is the recommended way to get a cache instance for a tool instead of
         directly initializing a new cache.
@@ -737,8 +718,7 @@ class ToolsetCache:
 
     @classmethod
     def initialize_all_caches(cls):
-        """
-        Initialize all registered caches, loading deterministic ones from disk.
+        """Initialize all registered caches, loading deterministic ones from disk.
         This should be called during application startup.
         """
         logger.info("Initializing all registered caches...")
@@ -756,7 +736,7 @@ class ToolsetCache:
 
         return list(cls._cache_registry.keys())
 
-    def get(self, key: str) -> Tuple[Any, float, str]:
+    def get(self, key: str) -> tuple[Any, float, str]:
         """Get a value, timestamp and reference ID from the cache, or raise KeyError if not found"""
         with self._cache_lock:
             if key not in self.cache:
@@ -847,7 +827,7 @@ class ToolsetCache:
                 f"Trimmed {len(keys_to_remove)} oldest entries from {self.name} cache"
             )
 
-    def _get_cache_filepath(self) -> Optional[str]:
+    def _get_cache_filepath(self) -> str | None:
         """Get the filepath for the cache file"""
         if not self.cache_dir:
             return None
@@ -855,7 +835,7 @@ class ToolsetCache:
         safe_name = os.path.basename(self.name).replace("/", "_").replace("\\", "_")
         return os.path.join(self.cache_dir, f"{safe_name}_cache.pkl")
 
-    def _get_registry_filepath(self) -> Optional[str]:
+    def _get_registry_filepath(self) -> str | None:
         """Get the filepath for the reference registry file"""
         if not self.cache_dir:
             return None
@@ -903,9 +883,8 @@ class ToolsetCache:
         filepath = self._get_cache_filepath()
         if filepath:
             try:
-                with self._cache_lock:
-                    with open(filepath, "wb") as f:
-                        pickle.dump(self.cache, f)
+                with self._cache_lock, open(filepath, "wb") as f:
+                    pickle.dump(self.cache, f)
                 logger.info(f"Flushed {len(self.cache)} items to {filepath}")
             except Exception as e:
                 logger.error(f"Error flushing cache to {filepath}: {e}")
@@ -950,8 +929,7 @@ class ToolsetCache:
         )
 
     def _generate_reference_id(self, cache_key: str, value: Any) -> str:
-        """
-        Generate a unique, deterministic reference ID for a cached value.
+        """Generate a unique, deterministic reference ID for a cached value.
         Ensure this method doesn't use timestamps or other non-deterministic elements.
         """
         # Create a composite that depends only on cache name, key, and value
@@ -991,8 +969,7 @@ class ToolsetCache:
             return "Preview unavailable"
 
     def _get_minimal_unique_ref_id(self, ref_id: str) -> str:
-        """
-        Return the shortest unique prefix of the reference ID.
+        """Return the shortest unique prefix of the reference ID.
         Similar to how Git and Docker handle IDs.
         """
         # Start with at least 3 characters (was 8, making it too long)
@@ -1015,12 +992,11 @@ class ToolsetCache:
     def handle_return_value(
         self,
         result: Any,
-        options: Optional[Union[ReturnOptions, Dict[str, Any]]] = None,
-        tool_name: Optional[str] = None,
-        ref_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Prepares the return value with value and reference fields based on the provided options.
+        options: ReturnOptions | dict[str, Any] | None = None,
+        tool_name: str | None = None,
+        ref_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Prepares the return value with value and reference fields based on the provided options.
 
         This method controls how values and references are returned based on the options
         specified. It intelligently handles different return formats and ensures that
@@ -1197,8 +1173,7 @@ class ToolsetCache:
         return response
 
     def cached(self, func: Callable[..., ReturnT]) -> Callable[..., Any]:
-        """
-        Decorator that caches function results with granular control over return values.
+        """Decorator that caches function results with granular control over return values.
 
         This decorator wraps functions to provide caching and reference capabilities.
         When a function is called, it first checks if the result is already cached.
@@ -1227,7 +1202,6 @@ class ToolsetCache:
         Returns:
             A wrapped function that implements caching behavior
         """
-
         # Check if the function is async
         is_async = inspect.iscoroutinefunction(func)
 
@@ -1247,8 +1221,7 @@ class ToolsetCache:
             return sync_wrapper
 
     def cached_unwrapped(self, func: Callable[..., ReturnT]) -> Callable[..., ReturnT]:
-        """
-        Decorator that caches function results but returns only the raw value.
+        """Decorator that caches function results but returns only the raw value.
 
         This is designed for MCP tools and other contexts where the wrapped
         dict format (with 'value' and 'reference' keys) is not desired.
@@ -1259,7 +1232,6 @@ class ToolsetCache:
         Returns:
             A wrapped function that implements caching behavior with unwrapped returns
         """
-
         # Check if the function is async
         is_async = inspect.iscoroutinefunction(func)
 
@@ -1289,8 +1261,7 @@ class ToolsetCache:
     async def _execute_cached_async(
         self, func: Callable, args: tuple, kwargs: dict
     ) -> Any:
-        """
-        Execute an async cached function call.
+        """Execute an async cached function call.
 
         This internal method handles the actual caching logic for async functions.
         """
@@ -1380,7 +1351,7 @@ class ToolsetCache:
                 result = await func(*processed_args, **func_kwargs)
                 self.stats["misses"] += 1
             except Exception as e:
-                logger.error(f"Error in cached function {func.__name__}: {str(e)}")
+                logger.error(f"Error in cached function {func.__name__}: {e!s}")
                 raise
 
             # Store in cache (set method now handles reference ID generation)
@@ -1397,8 +1368,7 @@ class ToolsetCache:
         return self.handle_return_value(result, options, tool_name, ref_id)
 
     def _execute_cached_sync(self, func: Callable, args: tuple, kwargs: dict) -> Any:
-        """
-        Execute a sync cached function call.
+        """Execute a sync cached function call.
 
         This internal method handles the actual caching logic for sync functions.
         """
@@ -1488,7 +1458,7 @@ class ToolsetCache:
                 result = func(*processed_args, **func_kwargs)
                 self.stats["misses"] += 1
             except Exception as e:
-                logger.error(f"Error in cached function {func.__name__}: {str(e)}")
+                logger.error(f"Error in cached function {func.__name__}: {e!s}")
                 raise
 
             # Store in cache (set method now handles reference ID generation)
@@ -1505,8 +1475,7 @@ class ToolsetCache:
         return self.handle_return_value(result, options, tool_name, ref_id)
 
     def _normalize_cache_key(self, func_name: str, args: list, kwargs: dict) -> str:
-        """
-        Generate a normalized cache key based on function name and input parameters.
+        """Generate a normalized cache key based on function name and input parameters.
 
         For all caches, this excludes the 'options' parameter which controls return format.
         """
@@ -1558,8 +1527,7 @@ class ToolsetCache:
         return ":".join(key_parts)
 
     def _process_reference_value(self, value: Any) -> Any:
-        """
-        Process a value recursively, resolving any references.
+        """Process a value recursively, resolving any references.
         References can be:
         1. CacheReference objects
         2. Strings that match reference IDs
@@ -1644,8 +1612,7 @@ class ToolsetCache:
         return self.contains(key)
 
     def clear(self) -> int:
-        """
-        Clear all cache entries and return the number of items cleared.
+        """Clear all cache entries and return the number of items cleared.
         """
         with self._cache_lock:
             count = len(self.cache)
@@ -1681,9 +1648,8 @@ class ToolsetCache:
 
             return count
 
-    def get_stats(self) -> Dict[str, Any]:
-        """
-        Return statistics about the current cache state.
+    def get_stats(self) -> dict[str, Any]:
+        """Return statistics about the current cache state.
         """
         with self._cache_lock:
             # Count expired entries (only relevant for non-deterministic caches)
@@ -1713,15 +1679,14 @@ class ToolsetCache:
             return stats.model_dump()
 
     def flush(self) -> None:
-        """
-        Manually flush the cache to disk if it's deterministic.
+        """Manually flush the cache to disk if it's deterministic.
         """
         if self.deterministic and self.cache_dir:
             self._flush_to_disk()
         else:
             logger.warning(f"Cannot flush non-deterministic cache {self.name}")
 
-    def inspect_cache(self) -> Dict[str, Any]:
+    def inspect_cache(self) -> dict[str, Any]:
         """Print all cache keys and their expiration times for debugging"""
         with self._cache_lock:
             current_time = time.time()

@@ -2,23 +2,18 @@
   "$schema": "zed://schemas/settings",
   "terminal": {
     "env": {
-      "PYTHONPATH": "./apps/api:./apps/api/src"
+      "PYTHONPATH": "./src"
     }
   },
   "lsp": {
     "pyright": {
       "settings": {
-        "python.pythonPath": "apps/api/.venv/bin/python",
+        "python.pythonPath": ".venv/bin/python",
         "python.analysis": {
-          "extraPaths": ["apps/api/src"],
+          "extraPaths": ["src"],
           "diagnosticMode": "workspace",
           "typeCheckingMode": "strict"
         }
-      }
-    },
-    "typescript-language-server": {
-      "settings": {
-        "typescript.preferences.importModuleSpecifier": "non-relative"
       }
     }
   },
@@ -31,20 +26,20 @@
         }
       },
       "language_servers": ["pyright"]
-    },
-    "TypeScript": {
-      "format_on_save": "on",
-      "tab_size": 2
-    },
-    "TSX": {
-      "format_on_save": "on",
-      "tab_size": 2
     }
   },
   "context_servers": {
     "nixos": {
       "command": "uvx",
       "args": ["mcp-nixos"]
+    },
+    "pypi": {
+      "command": "uvx",
+      "args": ["pypi-query-mcp-server"]
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
     }
   }
 }

@@ -305,6 +305,19 @@ uv run ruff format .
 uv run mypy src/
 ```
 
+### IDE Setup (Zed)
+
+The project includes Zed IDE configuration in `.zed/settings.json` with:
+
+- **Pyright** LSP with strict type checking
+- **Ruff** for format-on-save
+- **MCP Context Servers** for AI-assisted development:
+  - `mcp-nixos` - NixOS/Home Manager options lookup
+  - `pypi-query-mcp-server` - PyPI package intelligence
+  - `context7` - Up-to-date framework documentation
+
+To use the MCP servers, ensure you have `uvx` and `npx` available (included in the nix dev shell).
+
 ## Integration with FastMCP Caching Middleware
 
 `mcp-refcache` is **complementary** to FastMCP's built-in `ResponseCachingMiddleware`:

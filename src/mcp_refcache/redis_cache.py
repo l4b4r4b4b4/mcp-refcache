@@ -1,32 +1,26 @@
-import time
-import redis
-import pickle
-import logging
-import threading
 import functools
+import logging
+import pickle
+import threading
+import time
+from collections.abc import Callable
 from typing import (
+    Any,
     TypeVar,
     cast,
-    Any,
-    Dict,
-    List,
-    Optional,
-    Union,
-    Tuple,
-    Callable,
 )
+
+import redis
+from system_0.config import settings
 
 from .cache import (
-    ToolsetCache,
     CacheReference,
     ReturnT,
+    ToolsetCache,
 )
-
 from .return_types import (
     ReturnOptions,
 )
-
-from system_0.config import settings
 
 redis_url = settings.er_cache_url
 logger = logging.getLogger(f"redis_cache connected at: {redis_url}")
@@ -59,27 +53,27 @@ def redis_call(func: Callable[..., RedisFunctionT]) -> Callable[..., RedisFuncti
             # Safely handle potentially async results
             safe_result = safe_redis_result(result)
             # Type checkers don't realize this result is already resolved
-            return cast(RedisFunctionT, safe_result)
+            return cast("RedisFunctionT", safe_result)
         except (redis.RedisError, Exception) as e:
-            logger.error(f"Redis error in {func.__name__}: {str(e)}")
+            logger.error(f"Redis error in {func.__name__}: {e!s}")
 
             # Return sensible defaults based on function name, matching the return type
             if "get" in func.__name__:
-                return cast(RedisFunctionT, None)
+                return cast("RedisFunctionT", None)
             elif "exists" in func.__name__ or "contains" in func.__name__:
-                return cast(RedisFunctionT, False)
+                return cast("RedisFunctionT", False)
             elif "keys" in func.__name__ or "zrange" in func.__name__:
-                return cast(RedisFunctionT, [])
+                return cast("RedisFunctionT", [])
             elif (
                 "zcard" in func.__name__
                 or "delete" in func.__name__
                 or "len" in func.__name__
             ):
-                return cast(RedisFunctionT, 0)
+                return cast("RedisFunctionT", 0)
             elif "hgetall" in func.__name__:
-                return cast(RedisFunctionT, {})
+                return cast("RedisFunctionT", {})
             # Default fallback
-            return cast(RedisFunctionT, None)
+            return cast("RedisFunctionT", None)
 
     return wrapper
 
@@ -88,7 +82,7 @@ class RedisCompatibleCache(ToolsetCache):
     """Redis-compatible implementation of ToolsetCache using Dragonfly or Redis"""
 
     # Shared Redis client
-    _redis_client: Optional[redis.Redis] = None
+    _redis_client: redis.Redis | None = None
 
     @classmethod
     def get_redis_client(cls) -> redis.Redis:
@@ -121,8 +115,7 @@ class RedisCompatibleCache(ToolsetCache):
         return cls._redis_client
 
     def _process_reference_value(self, value: Any) -> Any:
-        """
-        Redis-specific implementation of the reference processing logic.
+        """Redis-specific implementation of the reference processing logic.
         Handles resolving references in input values for Redis-backed caches.
         """
         # Handle CacheReference objects directly
@@ -171,7 +164,7 @@ class RedisCompatibleCache(ToolsetCache):
                         return resolved_value
                     except Exception as e:
                         logger.error(f"Error resolving string reference: {e}")
-                        logger.debug(f"Reference resolution error detail: {str(e)}")
+                        logger.debug(f"Reference resolution error detail: {e!s}")
                         return value
 
             # If not found in memory, check Redis directly
@@ -263,8 +256,7 @@ class RedisCompatibleCache(ToolsetCache):
 
     @classmethod
     def get_cache_for_tool(cls, toolset_name: str) -> "RedisCompatibleCache":
-        """
-        Get the appropriate Redis cache for a given toolset, ensuring
+        """Get the appropriate Redis cache for a given toolset, ensuring
         cache instances are shared across processes via Redis.
         """
         key = f"{toolset_name}"
@@ -286,7 +278,7 @@ class RedisCompatibleCache(ToolsetCache):
                     cls._cache_registry[key], RedisCompatibleCache
                 ):
                     logger.debug(f"[CACHE] ✅ Found in local registry too: {key}")
-                    return cast(RedisCompatibleCache, cls._cache_registry[key])
+                    return cast("RedisCompatibleCache", cls._cache_registry[key])
                 else:
                     # Create a new local instance that points to existing Redis data
                     logger.debug(
@@ -349,7 +341,7 @@ class RedisCompatibleCache(ToolsetCache):
             cls._cache_registry[key], RedisCompatibleCache
         ):
             logger.debug(f"[CACHE] ✅ Using existing cache from local registry: {key}")
-            return cast(RedisCompatibleCache, cls._cache_registry[key])
+            return cast("RedisCompatibleCache", cls._cache_registry[key])
 
         logger.debug(f"[CACHE] ❌ No existing cache found - creating new one: {key}")
 
@@ -414,10 +406,10 @@ class RedisCompatibleCache(ToolsetCache):
         self,
         name: str,
         deterministic: bool = False,
-        expiry_seconds: Union[int, float, None] = 3600,
-        max_size: Optional[int] = 10000,
-        cache_dir: Optional[str] = None,
-        flush_interval: Optional[int] = 60 * 60,
+        expiry_seconds: int | float | None = 3600,
+        max_size: int | None = 10000,
+        cache_dir: str | None = None,
+        flush_interval: int | None = 60 * 60,
         reuse_existing: bool = False,
     ):
         """Initialize a Redis-backed cache"""
@@ -441,7 +433,7 @@ class RedisCompatibleCache(ToolsetCache):
         self.stats = {"hits": 0, "misses": 0, "expirations": 0, "references_used": 0}
 
         # Reference registry and cache will be stored in Redis
-        self.reference_registry: Dict[str, str] = {}  # Local copy for compatibility
+        self.reference_registry: dict[str, str] = {}  # Local copy for compatibility
 
         # Thread lock for thread safety
         self._cache_lock = threading.RLock()
@@ -564,7 +556,7 @@ class RedisCompatibleCache(ToolsetCache):
             logger.error(f"Error syncing reference registry from Redis: {e}")
 
     @redis_call
-    def _get_stats_from_redis(self) -> Dict[str, int]:
+    def _get_stats_from_redis(self) -> dict[str, int]:
         """Get stats from Redis"""
         try:
             stats_dict = self.redis.hgetall(self.stats_key)
@@ -604,7 +596,7 @@ class RedisCompatibleCache(ToolsetCache):
             logger.error(f"Error updating stats in Redis: {e}")
 
     # @redis_call
-    def get(self, key: str) -> Tuple[Any, float, str]:
+    def get(self, key: str) -> tuple[Any, float, str]:
         """Get a value, timestamp, and reference ID from the cache, or raise KeyError if not found"""
         try:
             # Get the full key
@@ -661,7 +653,7 @@ class RedisCompatibleCache(ToolsetCache):
         except Exception as e:
             if not isinstance(e, KeyError):
                 logger.error(f"Redis get error for {key}: {e}")
-            raise KeyError(f"Key {key} not found in cache: {str(e)}")
+            raise KeyError(f"Key {key} not found in cache: {e!s}")
 
     def _ensure_bytes(self, data: Any) -> bytes:
         """Safely convert data to bytes"""
@@ -818,7 +810,7 @@ class RedisCompatibleCache(ToolsetCache):
         except Exception as e:
             logger.error(f"Error trimming Redis cache: {e}")
 
-    def _convert_to_string_list(self, data: Any) -> List[str]:
+    def _convert_to_string_list(self, data: Any) -> list[str]:
         """Safely convert data to a list of strings"""
         if data is None:
             return []
@@ -872,7 +864,7 @@ class RedisCompatibleCache(ToolsetCache):
             return 0
 
     @redis_call
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Return statistics about the current cache state."""
         try:
             # Get stats from Redis
@@ -935,7 +927,7 @@ class RedisCompatibleCache(ToolsetCache):
             }
 
     @redis_call
-    def inspect_cache(self) -> Dict[str, Any]:
+    def inspect_cache(self) -> dict[str, Any]:
         """Get detailed information about cache contents"""
         try:
             current_time = time.time()
@@ -1050,7 +1042,7 @@ class RedisCompatibleCache(ToolsetCache):
         except Exception as e:
             logger.error(f"Error updating reference registry: {e}")
 
-    def _get_cache_key_for_ref(self, ref_id: str) -> Optional[str]:
+    def _get_cache_key_for_ref(self, ref_id: str) -> str | None:
         """Get the cache key for a reference ID from Redis"""
         try:
             # Try to get from local registry first (faster)
@@ -1074,8 +1066,7 @@ class RedisCompatibleCache(ToolsetCache):
             return None
 
     def _normalize_cache_key(self, func_name: str, args: list, kwargs: dict) -> str:
-        """
-        Generate a normalized cache key based on function name and input parameters.
+        """Generate a normalized cache key based on function name and input parameters.
         For Redis cache, we need to ensure this matches the original implementation.
         """
         # Start with the function name
@@ -1088,7 +1079,7 @@ class RedisCompatibleCache(ToolsetCache):
         if "input_data" in kwargs:
             input_data = kwargs["input_data"]
             if hasattr(input_data, "model_dump") and callable(
-                getattr(input_data, "model_dump")
+                input_data.model_dump
             ):
                 key_parts.append(f"input_data={input_data.model_dump()}")
             else:
@@ -1101,7 +1092,7 @@ class RedisCompatibleCache(ToolsetCache):
                 if input_key in kwargs:
                     input_value = kwargs[input_key]
                     if hasattr(input_value, "model_dump") and callable(
-                        getattr(input_value, "model_dump")
+                        input_value.model_dump
                     ):
                         key_parts.append(f"{input_key}={input_value.model_dump()}")
                     else:
@@ -1113,7 +1104,7 @@ class RedisCompatibleCache(ToolsetCache):
         if not found_input_param:
             # Handle Pydantic models specially
             for arg in args:
-                if hasattr(arg, "model_dump") and callable(getattr(arg, "model_dump")):
+                if hasattr(arg, "model_dump") and callable(arg.model_dump):
                     # Extract only the model's dict values for the key
                     key_parts.append(str(arg.model_dump()))
                 else:
@@ -1121,7 +1112,7 @@ class RedisCompatibleCache(ToolsetCache):
 
             # Handle keyword arguments (explicitly excluding options)
             for k, v in sorted(kwargs.items()):
-                if hasattr(v, "model_dump") and callable(getattr(v, "model_dump")):
+                if hasattr(v, "model_dump") and callable(v.model_dump):
                     key_parts.append(f"{k}={v.model_dump()}")
                 else:
                     key_parts.append(f"{k}={v}")
@@ -1130,7 +1121,7 @@ class RedisCompatibleCache(ToolsetCache):
         return ":".join(key_parts)
 
     @redis_call
-    def _get_keys(self, pattern: str) -> List[str]:
+    def _get_keys(self, pattern: str) -> list[str]:
         """Get keys from Redis with proper error handling and type conversion"""
         try:
             keys_result = self.redis.keys(pattern)
@@ -1140,7 +1131,7 @@ class RedisCompatibleCache(ToolsetCache):
             return []
 
     @redis_call
-    def _redis_get(self, key: str) -> Optional[bytes]:
+    def _redis_get(self, key: str) -> bytes | None:
         """Get a value from Redis with proper error handling"""
         try:
             result = self.redis.get(key)
@@ -1333,7 +1324,7 @@ class RedisCompatibleCache(ToolsetCache):
                     result = func(*processed_args, **func_kwargs)
                     self._update_stats_in_redis(misses=1)
                 except Exception as e:
-                    logger.error(f"Error in cached function {func.__name__}: {str(e)}")
+                    logger.error(f"Error in cached function {func.__name__}: {e!s}")
                     raise
 
                 # Store in cache

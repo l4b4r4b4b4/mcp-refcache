@@ -1,5 +1,6 @@
 from enum import Enum
-from typing import Dict, Any, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -49,25 +50,25 @@ class InterpolationParams(BaseModel):
 class ReturnOptions(BaseModel):
     """Options for controlling how values are returned from the cache"""
 
-    value_type: Optional[ValueReturnType] = Field(
+    value_type: ValueReturnType | None = Field(
         default=ValueReturnType.DEFAULT,
         description="Controls how the value field is returned. Set to None for no value.",
     )
-    reference_type: Optional[ReferenceReturnType] = Field(
+    reference_type: ReferenceReturnType | None = Field(
         default=ReferenceReturnType.DEFAULT,
         description="Controls how the reference field is returned. Set to None for no reference.",
     )
-    pagination: Optional[PaginationParams] = Field(
+    pagination: PaginationParams | None = Field(
         default=None,
         description="Optional pagination parameters for value-returning responses",
     )
-    interpolation: Optional[InterpolationParams] = Field(
+    interpolation: InterpolationParams | None = Field(
         default=None,
         description="Optional interpolation parameters for sampling large collections",
     )
 
     @classmethod
-    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "ReturnOptions":
+    def from_dict(cls, data: dict[str, Any] | None) -> "ReturnOptions":
         """Create ReturnOptions from a dictionary, with proper error handling"""
         # Handle None or empty dict
         if not data:

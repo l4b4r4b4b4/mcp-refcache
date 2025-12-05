@@ -2,8 +2,6 @@
 
 from typing import Any
 
-import pytest
-
 
 class TestCacheBasics:
     """Basic cache operations tests."""

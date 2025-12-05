@@ -1,16 +1,17 @@
-import time
 import logging
-from typing import Any, Dict, List, Optional, Union
-from pydantic import BaseModel, Field
+import time
+from typing import Any
 
+from pydantic import BaseModel, Field
 from src.cache.cache import (
+    CacheDefaultResponse,
     CacheReference,
     ToolsetCache,
-    CacheDefaultResponse,
 )
 from src.cache.return_types import (
     ReturnOptions,
 )
+
 # from src.cache.redis_cache import RedisCompatibleCache  # Available for future use
 
 # Setup logging
@@ -28,7 +29,7 @@ cache_tools_cache = ToolsetCache.get_cache_for_tool("cache_toolset")
 
 # Define models for structured input/output
 class ReferenceInput(BaseModel):
-    reference: Union[str, Dict[str, Any], CacheReference] = Field(
+    reference: str | dict[str, Any] | CacheReference = Field(
         description="A cache reference object, reference ID, or dictionary with ref_id and cache_name"
     )
 
@@ -41,17 +42,17 @@ class ReferenceValidityResult(BaseModel):
     valid: bool = Field(
         description="Whether the reference is valid and can be resolved"
     )
-    reason: Optional[str] = Field(None, description="Reason if invalid")
-    tool_name: Optional[str] = Field(
+    reason: str | None = Field(None, description="Reason if invalid")
+    tool_name: str | None = Field(
         None, description="Name of the tool that created the reference"
     )
-    created_at: Optional[str] = Field(
+    created_at: str | None = Field(
         None, description="When the reference was created"
     )
-    cache_type: Optional[str] = Field(
+    cache_type: str | None = Field(
         None, description="Type of cache (deterministic or non-deterministic)"
     )
-    expires_at: Optional[str] = Field(
+    expires_at: str | None = Field(
         None, description="When the reference expires (for non-deterministic caches)"
     )
 
@@ -59,7 +60,7 @@ class ReferenceValidityResult(BaseModel):
 class ReferenceInfo(BaseModel):
     ref_id: str = Field(description="Unique identifier for the reference")
     tool_name: str = Field(description="Name of the tool that created the reference")
-    preview: Optional[str] = Field(None, description="Preview of the cached value")
+    preview: str | None = Field(None, description="Preview of the cached value")
     created_at: str = Field(description="When the reference was created")
     valid: bool = Field(description="Whether the reference is currently valid")
 
@@ -85,10 +86,9 @@ class ReferenceInfo(BaseModel):
 @cache_tools_cache.cached
 def get_cached_value(
     input_data: ReferenceInput,
-    options: Optional[ReturnOptions] = None,
-) -> Union[Any, str, CacheReference, CacheDefaultResponse]:
-    """
-    Retrieve the actual value from a cache reference.
+    options: ReturnOptions | None = None,
+) -> Any | str | CacheReference | CacheDefaultResponse:
+    """Retrieve the actual value from a cache reference.
 
     This essential tool allows you to access previously computed values
     without having to recalculate them. Use it whenever you need to
@@ -117,7 +117,7 @@ def get_cached_value(
         # Just return the reference object itself
         return input_data.reference
     except ValueError as e:
-        raise ValueError(f"Error retrieving cached value: {str(e)}")
+        raise ValueError(f"Error retrieving cached value: {e!s}")
 
 
 @mcp.tool(description="Check if a cache reference is still valid")
@@ -125,10 +125,9 @@ def get_cached_value(
 @with_tool_options()
 def check_reference_validity(
     input_data: ReferenceInput,
-    options: Optional[ReturnOptions] = None,
-) -> Union[ReferenceValidityResult, str, CacheReference, CacheDefaultResponse]:
-    """
-    Check if a cache reference is still valid and can be resolved.
+    options: ReturnOptions | None = None,
+) -> ReferenceValidityResult | str | CacheReference | CacheDefaultResponse:
+    """Check if a cache reference is still valid and can be resolved.
 
     This tool helps you determine if a reference you have is still usable
     or if it has expired. It's useful before attempting to use an older reference.
@@ -270,7 +269,7 @@ def check_reference_validity(
 
         return ReferenceValidityResult(
             valid=False,
-            reason=f"Error checking reference: {str(e)}",
+            reason=f"Error checking reference: {e!s}",
             tool_name=tool_name,
             created_at=created_at_str,
             cache_type=None,
@@ -283,10 +282,9 @@ def check_reference_validity(
 @with_tool_options()
 def get_cache_preview(
     input_data: ReferenceInput,
-    options: Optional[ReturnOptions] = None,
-) -> Union[str, CacheReference, CacheDefaultResponse]:
-    """
-    Get a human-readable preview of a cached value without retrieving the full data.
+    options: ReturnOptions | None = None,
+) -> str | CacheReference | CacheDefaultResponse:
+    """Get a human-readable preview of a cached value without retrieving the full data.
 
     This tool is useful when you want to see what a reference contains
     without processing the complete object, which could be large.
@@ -336,19 +334,18 @@ def get_cache_preview(
                 preview_text = str(value)
             return f"Preview ({reference.tool_name}): {preview_text}"
         except Exception as e:
-            return f"Error creating preview: {str(e)}"
+            return f"Error creating preview: {e!s}"
     except ValueError as e:
-        raise ValueError(f"Error retrieving preview: {str(e)}")
+        raise ValueError(f"Error retrieving preview: {e!s}")
 
 
 @mcp.tool(description="List all available references in a cache")
 @cache_tools_cache.cached
 @with_tool_options(pagination=True, interpolation=True)  # Added pagination support
 def list_cache_references(
-    input_data: CacheNameInput, options: Optional[ReturnOptions] = None
-) -> Union[List[ReferenceInfo], str, CacheReference, CacheDefaultResponse]:
-    """
-    List all available references in a specific cache.
+    input_data: CacheNameInput, options: ReturnOptions | None = None
+) -> list[ReferenceInfo] | str | CacheReference | CacheDefaultResponse:
+    """List all available references in a specific cache.
 
     This tool helps you discover what references are available in a particular cache
     when you need to find previously computed values.
@@ -426,14 +423,14 @@ def list_cache_references(
                 )
         except Exception as e:
             # Skip invalid references
-            logger.warning(f"Error processing reference {ref_id}: {str(e)}")
+            logger.warning(f"Error processing reference {ref_id}: {e!s}")
             continue
 
     return references
 
 
 class ListCachesOptions(BaseModel):
-    placeholder: Optional[bool] = Field(
+    placeholder: bool | None = Field(
         default=None, description="No specific input needed for this tool"
     )
 
@@ -442,11 +439,10 @@ class ListCachesOptions(BaseModel):
 @cache_tools_cache.cached
 @with_tool_options(pagination=True, interpolation=True)  # Added pagination support
 def list_caches(
-    input_data: Optional[ListCachesOptions] = None,
-    options: Optional[ReturnOptions] = None,
-) -> Union[List[Dict[str, Any]], str, CacheReference, CacheDefaultResponse]:
-    """
-    List all registered caches in the system.
+    input_data: ListCachesOptions | None = None,
+    options: ReturnOptions | None = None,
+) -> list[dict[str, Any]] | str | CacheReference | CacheDefaultResponse:
+    """List all registered caches in the system.
 
     This tool helps you understand what caches are available and their characteristics,
     so you can work with the most appropriate cache for your needs.
@@ -488,10 +484,9 @@ def list_caches(
 @cache_tools_cache.cached
 @with_tool_options()
 def get_cache_stats(
-    input_data: CacheNameInput, options: Optional[ReturnOptions] = None
-) -> Union[Dict[str, Any], str, CacheReference, CacheDefaultResponse]:
-    """
-    Get detailed statistics about a specific cache.
+    input_data: CacheNameInput, options: ReturnOptions | None = None
+) -> dict[str, Any] | str | CacheReference | CacheDefaultResponse:
+    """Get detailed statistics about a specific cache.
 
     This tool provides insight into how a particular cache is performing,
     including hit rates and usage patterns.
