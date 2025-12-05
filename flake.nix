@@ -98,7 +98,7 @@
           '';
 
           runScript = ''
-            SHELL=${pkgs.zsh}/bin/zsh
+            export SHELL=${pkgs.zsh}/bin/zsh
             export SSL_CERT_FILE="/etc/ssl/certs/ca-bundle.crt"
 
             echo ""
