@@ -42,35 +42,9 @@
     }
   },
   "context_servers": {
-    "bundesmcp": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/home/lukes/code/AIS/BundesMCP",
-        "python",
-        "-m",
-        "src.main"
-      ],
-      "env": {
-        "PYTHONUNBUFFERED": "1",
-        "PYTHONPATH": "/home/lukes/code/AIS/BundesMCP/src"
-      }
-    },
     "nixos": {
       "command": "uvx",
       "args": ["mcp-nixos"]
-    },
-    "sqlite": {
-      "command": "uvx",
-      "args": ["mcp-sqlite", "./data/docproc.db"]
     }
-    // "osm": {
-    //   "command": "uvx",
-    //   "args": ["osm-mcp-server"],
-    //   "env": {
-    //     "SSL_CERT_FILE": "/etc/ssl/certs/ca-bundle.crt"
-    //   }
-    // }
   }
 }
