@@ -420,6 +420,60 @@ This section defines the **mandatory workflow** for AI coding assistants working
 
 ---
 
+## Session Handoff
+
+When ending a session or approaching context limits, create a starting prompt for the next session.
+
+### Hard Rules
+- **MUST provide prompt in a codebox**: Use triple backticks with escaped inner backticks if needed
+- **MUST NOT write the prompt into scratchpad**: Only output in chat as a codebox
+- **MUST keep prompt short and concise**: 15-30 lines maximum
+- **MUST reference scratchpad for details**: Say "See `.agent/scratchpad.md` for full context"
+- **MUST update scratchpad first**: Document progress, decisions, and next steps before creating prompt
+
+### Prompt Structure
+```
+[Task Title]
+
+## Context
+- Brief project state (1-2 lines)
+- Reference to scratchpad
+
+## What Was Done
+- Bullet list of completed items (3-5 items max)
+
+## Current Task
+- Clear, actionable next steps
+- Specific files to modify
+
+## Guidelines
+- Key constraints or reminders
+```
+
+### Example
+````
+Continue mcp-refcache: Feature X Implementation
+
+## Context
+- Phase 1-5 complete, 389 tests passing
+- See `.agent/scratchpad.md` for full context
+
+## What Was Done
+- Created `src/module.py` with core logic
+- Added tests in `tests/test_module.py`
+
+## Current Task
+1. Add error handling for edge cases
+2. Update documentation
+
+## Guidelines
+- Follow `.rules` (TDD, document as you go)
+- Run `ruff check . --fix` before committing
+````
+
+
+---
+
 ## Usage of Coding Assistants (General Guidelines)
 
 ### Hard Rules
@@ -477,47 +531,12 @@ Nix uses `${...}` for its own variable interpolation. Bash variables in Nix mult
 
 ### Nix Dev Shell Helper Functions
 
-The Nix dev shell provides several helper functions to streamline common development tasks:
+The Nix dev shell provides helper functions to streamline common development tasks:
 
 - **`test-local`**: Run full CI checks locally (lint + format + tests with coverage)
-- **`sync-agent-rules [source_file]`**: Create/update all agent rule files from a single source (auto-runs on shell startup)
 
 ### Soft Rules for Helper Functions
 - Run `test-local` before pushing to catch issues early
-- **After updating `.rules`, run `sync-agent-rules` to update all agent config files** (or just restart the dev shell)
-- The sync happens automatically on dev shell startup, keeping all agents in sync
-
-### Agent Rule Files - Single Source of Truth
-
-The `sync-agent-rules` function maintains **all** agent config files from one source:
-
-**Source files checked (in order):**
-1. `.rules` (our standard - recommended)
-2. `.cursorrules`, `.windsurfrules`, `.clinerules`
-3. `.github/copilot-instructions.md`
-4. `AGENT.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`
-
-**Target files created/updated:**
-- `.agent/rules` (our documentation standard)
-- `.cursorrules` (Cursor IDE)
-- `.windsurfrules` (Windsurf)
-- `.clinerules` (Cline)
-- `.github/copilot-instructions.md` (GitHub Copilot)
-- `AGENT.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` (various agents)
-
-**Usage:**
-```bash
-# Auto-detect source and sync all (runs automatically on shell startup)
-sync-agent-rules
-
-# Explicitly specify source file
-sync-agent-rules .rules
-
-# After editing .rules, sync manually
-sync-agent-rules .rules
-```
-
-**Best Practice:** Edit `.rules` only, then run `sync-agent-rules` to propagate changes to all agents.
 
 ---
 

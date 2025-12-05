@@ -1,0 +1,3 @@
+[submodule ".external/fastmcp"]
+	path = .external/fastmcp
+	url = https://github.com/jlowin/fastmcp.git
