@@ -175,6 +175,16 @@ class CacheResponse(BaseModel):
         description="Estimated token count of the full value.",
     )
 
+    # Size metadata from PreviewResult
+    original_size: int | None = Field(
+        default=None,
+        description="Size of the original value (in tokens or characters).",
+    )
+    preview_size: int | None = Field(
+        default=None,
+        description="Size of the preview (in tokens or characters).",
+    )
+
     # The preview (structured, not stringified!)
     preview: Any = Field(
         description="Preview of the value (structured data, respects size limit).",

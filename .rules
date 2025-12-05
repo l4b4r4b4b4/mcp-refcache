@@ -87,6 +87,7 @@ Professional engineering requires honest, conservative assessment. Users need re
 - Keep imports minimal and explicit; avoid wildcard imports (`from ... import *`).
 - Ensure all dependencies in `pyproject.toml` are in use and are necessary.
 - Prefer `Protocol` over ABC for defining interfaces (duck typing over inheritance).
+- **`__all__` must be sorted alphabetically**: Ruff enforces RUF022. Do not use comments inside `__all__` lists as they interfere with sorting. Keep exports in a single alphabetically sorted list.
 
 ---
 

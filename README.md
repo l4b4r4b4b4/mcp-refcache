@@ -119,90 +119,98 @@ Namespaces provide isolation and scoping for cached values:
 | `org:<id>` | Organization | Long | Shared org resources |
 | `custom:<name>` | Arbitrary | Configurable | Project-specific needs |
 
-Namespace hierarchy enables **permission inheritance** - child namespaces inherit parent restrictions unless explicitly overridden.
-
 ### Permission Model
 
 ```python
 from mcp_refcache import Permission, AccessPolicy
 
-class Permission(Flag):
-    NONE = 0
-    READ = auto()      # Resolve reference to see value
-    WRITE = auto()     # Create new references
-    UPDATE = auto()    # Modify existing cached values
-    DELETE = auto()    # Remove/invalidate references
-    EXECUTE = auto()   # Use value in computation WITHOUT seeing it!
+# Permission flags (can be combined with |)
+Permission.READ      # Resolve reference to see value
+Permission.WRITE     # Create new references  
+Permission.UPDATE    # Modify existing cached values
+Permission.DELETE    # Remove/invalidate references
+Permission.EXECUTE   # Use value in computation WITHOUT seeing it!
+Permission.CRUD      # READ | WRITE | UPDATE | DELETE
+Permission.FULL      # CRUD | EXECUTE
 ```
 
-The **EXECUTE** permission is the key to private computation:
-
-```python
-# Agent can use this value but cannot read it
-secret_policy = AccessPolicy(
-    user_permissions=Permission.FULL,           # User sees everything
-    agent_permissions=Permission.EXECUTE,       # Agent can use, not read!
-)
-
-# Store API key that agent can use but never see
-cache.set(
-    "api_key", 
-    "sk-secret-123", 
-    namespace="user:456",
-    policy=secret_policy
-)
-```
+The **EXECUTE** permission enables private computation - agents can use values without reading them.
 
 ### Access Control
 
-Every cached value has separate permissions for **users** and **agents**:
+The access control system supports multiple layers:
 
 ```python
-# User can read/write, agent can only execute (blind computation)
-cache.set(
-    key="user_secrets",
-    value={"ssn": "123-45-6789", "credit_card": "..."},
-    policy=AccessPolicy(
-        user_permissions=Permission.READ | Permission.UPDATE,
-        agent_permissions=Permission.EXECUTE,  # Can compute, can't see!
-    )
+from mcp_refcache import AccessPolicy, DefaultActor, Permission
+
+# Role-based defaults (backwards compatible)
+policy = AccessPolicy(
+    user_permissions=Permission.FULL,
+    agent_permissions=Permission.READ | Permission.EXECUTE,
 )
 
-# Agent tries to read - denied!
-cache.get("user_secrets", accessor=Agent("gpt-4"))  # Raises AccessDenied
+# With ownership - owner gets special permissions
+policy = AccessPolicy(
+    user_permissions=Permission.READ,
+    owner="user:alice",
+    owner_permissions=Permission.FULL,
+)
 
-# Agent passes reference to tool - works! (EXECUTE permission)
-@mcp.tool()
-def validate_identity(secrets_ref: str) -> bool:
-    secrets = cache.resolve(secrets_ref, permission=Permission.EXECUTE)
-    return verify_ssn(secrets["ssn"])  # Server uses value, agent never sees it
+# With explicit allow/deny lists
+policy = AccessPolicy(
+    user_permissions=Permission.FULL,
+    denied_actors=frozenset({"agent:untrusted-*"}),
+    allowed_actors=frozenset({"agent:trusted-service"}),
+)
+
+# Session binding - lock to specific session
+policy = AccessPolicy(
+    user_permissions=Permission.FULL,
+    bound_session="session-abc123",
+)
+```
+
+### Identity-Aware Actors
+
+Actors represent users, agents, or system processes with optional identity:
+
+```python
+from mcp_refcache import DefaultActor
+
+# Anonymous actors (backwards compatible with "user"/"agent" strings)
+user = DefaultActor.user()
+agent = DefaultActor.agent()
+
+# Identified actors
+alice = DefaultActor.user(id="alice", session_id="sess-123")
+claude = DefaultActor.agent(id="claude-instance-1")
+
+# Pattern matching for ACLs
+alice.matches("user:alice")  # True
+alice.matches("user:*")      # True (wildcard)
+claude.matches("agent:claude-*")  # True (glob pattern)
 ```
 
 ### Private Computation
 
-The killer feature: agents can orchestrate computations on sensitive data without ever accessing it:
+Agents can orchestrate computations on sensitive data without accessing it:
 
 ```python
-# 1. User uploads sensitive document
-doc_ref = cache.store(
-    sensitive_document,
-    namespace="user:123",
+# Store with EXECUTE-only for agents
+cache.set(
+    "user_secrets",
+    {"ssn": "123-45-6789"},
     policy=AccessPolicy(
         user_permissions=Permission.FULL,
-        agent_permissions=Permission.EXECUTE,  # Blind execution only
+        agent_permissions=Permission.EXECUTE,  # Can use, can't see!
     )
 )
 
-# 2. Agent calls analysis tool with reference
-# Agent sees: {"ref_id": "abc123", "preview": "[REDACTED - EXECUTE only]"}
-# Agent calls: analyze_document(doc_ref="abc123")
-
-# 3. Tool resolves reference server-side and processes
+# Tool resolves reference server-side
 @mcp.tool()
-def analyze_document(doc_ref: str) -> dict:
-    doc = cache.resolve(doc_ref, permission=Permission.EXECUTE)
-    # Full document available to tool, never sent to agent
-    return {"summary": summarize(doc), "entities": extract_entities(doc)}
+def validate_identity(secrets_ref: str) -> bool:
+    secrets = cache.resolve(secrets_ref)  # Server sees value
+    return verify_ssn(secrets["ssn"])     # Agent never sees it
 ```
 
 ## API Reference

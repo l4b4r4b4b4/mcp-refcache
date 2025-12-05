@@ -4,22 +4,40 @@ Provides the primary API for caching values and managing references
 with namespace isolation and permission-based access control.
 """
 
+from __future__ import annotations
+
 import functools
 import hashlib
 import inspect
 import time
-from collections.abc import Callable
-from typing import Any, Literal, ParamSpec, TypeVar
+from collections.abc import Callable  # noqa: TC003 - used at runtime in type hints
+from typing import Any, ParamSpec, TypeVar
 
+from mcp_refcache.access.actor import ActorLike, resolve_actor
+from mcp_refcache.access.checker import (
+    DefaultPermissionChecker,
+    PermissionChecker,
+)
 from mcp_refcache.backends.base import CacheBackend, CacheEntry
 from mcp_refcache.backends.memory import MemoryBackend
+from mcp_refcache.context import (
+    SizeMeasurer,
+    TiktokenAdapter,
+    Tokenizer,
+    TokenMeasurer,
+    get_default_measurer,
+)
 from mcp_refcache.models import (
     CacheReference,
     CacheResponse,
     PreviewConfig,
-    PreviewStrategy,
 )
 from mcp_refcache.permissions import AccessPolicy, Permission
+from mcp_refcache.preview import (
+    PreviewGenerator,
+    PreviewResult,
+    get_default_generator,
+)
 
 # Type variables for decorator
 P = ParamSpec("P")
@@ -59,6 +77,10 @@ class RefCache:
         default_policy: AccessPolicy | None = None,
         default_ttl: float | None = 3600,
         preview_config: PreviewConfig | None = None,
+        tokenizer: Tokenizer | None = None,
+        measurer: SizeMeasurer | None = None,
+        preview_generator: PreviewGenerator | None = None,
+        permission_checker: PermissionChecker | None = None,
     ) -> None:
         """Initialize the cache.
 
@@ -68,6 +90,31 @@ class RefCache:
             default_policy: Default access policy for new entries.
             default_ttl: Default TTL in seconds. None means no expiration.
             preview_config: Configuration for preview generation.
+            tokenizer: Tokenizer for token counting. If provided without measurer,
+                a TokenMeasurer is created automatically.
+            measurer: Size measurer for preview generation. Takes precedence over
+                tokenizer if both are provided.
+            preview_generator: Generator for creating previews. Defaults to
+                generator matching preview_config.default_strategy.
+            permission_checker: Permission checker for access control. Defaults to
+                DefaultPermissionChecker which enforces namespace ownership rules.
+
+        Example:
+            ```python
+            # Simple usage with tiktoken
+            cache = RefCache(tokenizer=TiktokenAdapter("gpt-4o"))
+
+            # Advanced usage with custom measurer and generator
+            cache = RefCache(
+                measurer=TokenMeasurer(TiktokenAdapter("gpt-4o")),
+                preview_generator=SampleGenerator(),
+            )
+
+            # Custom permission checker with namespace resolver
+            from mcp_refcache import DefaultPermissionChecker, DefaultNamespaceResolver
+            checker = DefaultPermissionChecker(namespace_resolver=DefaultNamespaceResolver())
+            cache = RefCache(permission_checker=checker)
+            ```
         """
         self.name = name
         self._backend = backend if backend is not None else MemoryBackend()
@@ -77,6 +124,36 @@ class RefCache:
         self.default_ttl = default_ttl
         self.preview_config = (
             preview_config if preview_config is not None else PreviewConfig()
+        )
+
+        # Store tokenizer for reference
+        self._tokenizer = tokenizer
+
+        # Determine measurer: explicit > from tokenizer > from config
+        if measurer is not None:
+            self._measurer = measurer
+        elif tokenizer is not None:
+            self._measurer = TokenMeasurer(tokenizer)
+        else:
+            # Default: use TOKEN mode with TiktokenAdapter (falls back to CharacterFallback)
+            self._measurer = get_default_measurer(
+                self.preview_config.size_mode,
+                tokenizer=TiktokenAdapter(),
+            )
+
+        # Determine preview generator: explicit > from config
+        if preview_generator is not None:
+            self._preview_generator = preview_generator
+        else:
+            self._preview_generator = get_default_generator(
+                self.preview_config.default_strategy
+            )
+
+        # Permission checker for access control
+        self._permission_checker: PermissionChecker = (
+            permission_checker
+            if permission_checker is not None
+            else DefaultPermissionChecker()
         )
 
         # Mapping from key to ref_id for lookups
@@ -168,7 +245,7 @@ class RefCache:
         *,
         page: int | None = None,
         page_size: int | None = None,
-        actor: Literal["user", "agent"] = "agent",
+        actor: ActorLike = "agent",
     ) -> CacheResponse:
         """Get a preview of a cached value.
 
@@ -176,82 +253,86 @@ class RefCache:
             ref_id: Reference ID or key to look up.
             page: Page number for pagination (1-indexed).
             page_size: Number of items per page.
-            actor: Who is requesting ("user" or "agent").
+            actor: Who is requesting. Can be an Actor object or literal "user"/"agent".
 
         Returns:
             A CacheResponse with preview and metadata.
 
         Raises:
             KeyError: If the reference is not found.
-            PermissionError: If the actor lacks READ permission.
+            PermissionDenied: If the actor lacks READ permission or namespace access.
 
         Example:
             ```python
             response = cache.get(ref.ref_id)
             print(response.preview)  # Sampled preview
             print(response.total_items)  # Total count
+
+            # With Actor object
+            from mcp_refcache import DefaultActor
+            actor = DefaultActor.user(id="alice")
+            response = cache.get(ref.ref_id, actor=actor)
             ```
         """
         entry = self._get_entry(ref_id)
 
         # Check permissions
-        self._check_permission(entry.policy, Permission.READ, actor)
+        self._check_permission(entry.policy, Permission.READ, actor, entry.namespace)
 
-        # Generate preview
-        preview, strategy = self._create_preview(
+        # Generate preview using the new PreviewResult system
+        preview_result = self._create_preview(
             entry.value,
             page=page,
             page_size=page_size,
         )
 
-        # Calculate pagination info
-        total_items = entry.metadata.get("total_items")
-        total_pages = None
-        if page is not None and page_size is not None and total_items is not None:
-            total_pages = (
-                (total_items + page_size - 1) // page_size if total_items > 0 else 0
-            )
-
         return CacheResponse(
             ref_id=ref_id,
             cache_name=self.name,
             namespace=entry.namespace,
-            total_items=total_items,
-            preview=preview,
-            preview_strategy=strategy,
-            page=page,
-            total_pages=total_pages,
+            total_items=preview_result.total_items,
+            original_size=preview_result.original_size,
+            preview_size=preview_result.preview_size,
+            preview=preview_result.preview,
+            preview_strategy=preview_result.strategy,
+            page=preview_result.page,
+            total_pages=preview_result.total_pages,
         )
 
     def resolve(
         self,
         ref_id: str,
         *,
-        actor: Literal["user", "agent"] = "agent",
+        actor: ActorLike = "agent",
     ) -> Any:
         """Resolve a reference to get the full cached value.
 
         Args:
             ref_id: Reference ID or key to look up.
-            actor: Who is requesting ("user" or "agent").
+            actor: Who is requesting. Can be an Actor object or literal "user"/"agent".
 
         Returns:
             The full cached value.
 
         Raises:
             KeyError: If the reference is not found.
-            PermissionError: If the actor lacks READ permission.
+            PermissionDenied: If the actor lacks READ permission or namespace access.
 
         Example:
             ```python
             value = cache.resolve(ref.ref_id)
             print(value)  # Full value
+
+            # With Actor object
+            from mcp_refcache import DefaultActor
+            actor = DefaultActor.user(id="alice")
+            value = cache.resolve(ref.ref_id, actor=actor)
             ```
         """
         entry = self._get_entry(ref_id)
 
         # Check permissions
-        self._check_permission(entry.policy, Permission.READ, actor)
+        self._check_permission(entry.policy, Permission.READ, actor, entry.namespace)
 
         return entry.value
 
@@ -259,24 +340,26 @@ class RefCache:
         self,
         ref_id: str,
         *,
-        actor: Literal["user", "agent"] = "agent",
+        actor: ActorLike = "agent",
     ) -> bool:
         """Delete a cached entry.
 
         Args:
             ref_id: Reference ID or key to delete.
-            actor: Who is requesting ("user" or "agent").
+            actor: Who is requesting. Can be an Actor object or literal "user"/"agent".
 
         Returns:
             True if deleted, False if not found.
 
         Raises:
-            PermissionError: If the actor lacks DELETE permission.
+            PermissionDenied: If the actor lacks DELETE permission or namespace access.
         """
         # Try to get the entry to check permissions
         try:
             entry = self._get_entry(ref_id)
-            self._check_permission(entry.policy, Permission.DELETE, actor)
+            self._check_permission(
+                entry.policy, Permission.DELETE, actor, entry.namespace
+            )
         except KeyError:
             return False
 
@@ -488,19 +571,22 @@ class RefCache:
         self,
         policy: AccessPolicy,
         required: Permission,
-        actor: Literal["user", "agent"],
+        actor: ActorLike,
+        namespace: str,
     ) -> None:
-        """Check if an actor has the required permission."""
-        if actor == "user":
-            if not policy.user_can(required):
-                raise PermissionError(
-                    f"User lacks {required.name} permission for this reference"
-                )
-        else:
-            if not policy.agent_can(required):
-                raise PermissionError(
-                    f"Agent lacks {required.name} permission for this reference"
-                )
+        """Check if an actor has the required permission.
+
+        Args:
+            policy: The access policy to evaluate.
+            required: The permission required for the operation.
+            actor: The actor attempting the operation (Actor or literal).
+            namespace: The namespace of the resource.
+
+        Raises:
+            PermissionDenied: If the actor lacks the required permission.
+        """
+        resolved_actor = resolve_actor(actor)
+        self._permission_checker.check(policy, required, resolved_actor, namespace)
 
     def _count_items(self, value: Any) -> int | None:
         """Count items in a collection."""
@@ -524,48 +610,23 @@ class RefCache:
         value: Any,
         page: int | None = None,
         page_size: int | None = None,
-    ) -> tuple[Any, PreviewStrategy]:
-        """Create a preview of a value.
+    ) -> PreviewResult:
+        """Create a preview of a value using the configured generator.
 
-        Returns a tuple of (preview, strategy).
+        Args:
+            value: The value to create a preview of.
+            page: Page number for pagination (1-indexed).
+            page_size: Number of items per page.
+
+        Returns:
+            PreviewResult with preview data and metadata.
         """
-        max_items = self.preview_config.max_size
+        max_size = self.preview_config.max_size
 
-        # Handle pagination
-        if page is not None and page_size is not None:
-            if isinstance(value, (list, tuple)):
-                start_idx = (page - 1) * page_size
-                end_idx = start_idx + page_size
-                return list(value)[start_idx:end_idx], PreviewStrategy.PAGINATE
-            elif isinstance(value, dict):
-                keys = list(value.keys())
-                start_idx = (page - 1) * page_size
-                end_idx = start_idx + page_size
-                page_keys = keys[start_idx:end_idx]
-                return {k: value[k] for k in page_keys}, PreviewStrategy.PAGINATE
-
-        # Sample strategy for large collections
-        if isinstance(value, (list, tuple)):
-            if len(value) <= max_items:
-                return list(value), PreviewStrategy.SAMPLE
-            # Sample evenly spaced items
-            step = len(value) / max_items
-            sampled = [value[int(i * step)] for i in range(max_items)]
-            return sampled, PreviewStrategy.SAMPLE
-
-        elif isinstance(value, dict):
-            if len(value) <= max_items:
-                return dict(value), PreviewStrategy.SAMPLE
-            # Sample evenly spaced keys
-            keys = list(value.keys())
-            step = len(keys) / max_items
-            sampled_keys = [keys[int(i * step)] for i in range(max_items)]
-            return {k: value[k] for k in sampled_keys}, PreviewStrategy.SAMPLE
-
-        elif isinstance(value, str):
-            if len(value) <= max_items:
-                return value, PreviewStrategy.TRUNCATE
-            return value[:max_items] + "...", PreviewStrategy.TRUNCATE
-
-        # For other types, return as-is
-        return value, PreviewStrategy.SAMPLE
+        return self._preview_generator.generate(
+            value=value,
+            max_size=max_size,
+            measurer=self._measurer,
+            page=page,
+            page_size=page_size,
+        )

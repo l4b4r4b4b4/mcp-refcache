@@ -40,6 +40,10 @@
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "langfuse-docs": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://langfuse.com/api/mcp"]
     }
   }
 }

@@ -3,13 +3,42 @@
 This library provides context-aware caching with:
 - Namespace isolation (public, session, user, custom)
 - Access control (separate permissions for users and agents)
+- Identity-aware actors (users, agents, system)
 - Private computation (EXECUTE permission for blind compute)
 - Context limiting (token/char-based with truncate/paginate/sample strategies)
 """
 
+from mcp_refcache.access.actor import (
+    Actor,
+    ActorLike,
+    ActorType,
+    DefaultActor,
+    resolve_actor,
+)
+from mcp_refcache.access.checker import (
+    DefaultPermissionChecker,
+    PermissionChecker,
+    PermissionDenied,
+)
+from mcp_refcache.access.namespace import (
+    DefaultNamespaceResolver,
+    NamespaceInfo,
+    NamespaceResolver,
+)
 from mcp_refcache.backends.base import CacheBackend, CacheEntry
 from mcp_refcache.backends.memory import MemoryBackend
 from mcp_refcache.cache import RefCache
+from mcp_refcache.context import (
+    CharacterFallback,
+    CharacterMeasurer,
+    HuggingFaceAdapter,
+    SizeMeasurer,
+    TiktokenAdapter,
+    Tokenizer,
+    TokenMeasurer,
+    get_default_measurer,
+    get_default_tokenizer,
+)
 from mcp_refcache.models import (
     CacheReference,
     CacheResponse,
@@ -26,6 +55,14 @@ from mcp_refcache.permissions import (
     AccessPolicy,
     Permission,
 )
+from mcp_refcache.preview import (
+    PaginateGenerator,
+    PreviewGenerator,
+    PreviewResult,
+    SampleGenerator,
+    TruncateGenerator,
+    get_default_generator,
+)
 
 __version__ = "0.0.1"
 
@@ -35,16 +72,42 @@ __all__ = [
     "POLICY_READ_ONLY",
     "POLICY_USER_ONLY",
     "AccessPolicy",
+    "Actor",
+    "ActorLike",
+    "ActorType",
     "CacheBackend",
     "CacheEntry",
     "CacheReference",
     "CacheResponse",
+    "CharacterFallback",
+    "CharacterMeasurer",
+    "DefaultActor",
+    "DefaultNamespaceResolver",
+    "DefaultPermissionChecker",
+    "HuggingFaceAdapter",
     "MemoryBackend",
+    "NamespaceInfo",
+    "NamespaceResolver",
+    "PaginateGenerator",
     "PaginatedResponse",
     "Permission",
+    "PermissionChecker",
+    "PermissionDenied",
     "PreviewConfig",
+    "PreviewGenerator",
+    "PreviewResult",
     "PreviewStrategy",
     "RefCache",
+    "SampleGenerator",
+    "SizeMeasurer",
     "SizeMode",
+    "TiktokenAdapter",
+    "TokenMeasurer",
+    "Tokenizer",
+    "TruncateGenerator",
     "__version__",
+    "get_default_generator",
+    "get_default_measurer",
+    "get_default_tokenizer",
+    "resolve_actor",
 ]

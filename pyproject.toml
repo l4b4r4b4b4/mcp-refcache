@@ -44,7 +44,13 @@ mcp = [
     "fastmcp>=2.0.0",
 ]
 all = [
-    "mcp-refcache[redis,mcp]",
+    "mcp-refcache[redis,mcp,tiktoken,transformers]",
+]
+tiktoken = [
+    "tiktoken>=0.5.0",
+]
+transformers = [
+    "transformers>=4.30.0",
 ]
 
 [project.urls]
