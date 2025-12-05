@@ -7,13 +7,22 @@ This library provides context-aware caching with:
 - Context limiting (token/char-based with truncate/paginate/sample strategies)
 """
 
+from mcp_refcache.backends.base import CacheBackend, CacheEntry
+from mcp_refcache.backends.memory import MemoryBackend
+from mcp_refcache.cache import RefCache
 from mcp_refcache.models import (
     CacheReference,
     CacheResponse,
     PaginatedResponse,
     PreviewConfig,
+    PreviewStrategy,
+    SizeMode,
 )
 from mcp_refcache.permissions import (
+    POLICY_EXECUTE_ONLY,
+    POLICY_PUBLIC,
+    POLICY_READ_ONLY,
+    POLICY_USER_ONLY,
     AccessPolicy,
     Permission,
 )
@@ -21,11 +30,21 @@ from mcp_refcache.permissions import (
 __version__ = "0.0.1"
 
 __all__ = [
+    "POLICY_EXECUTE_ONLY",
+    "POLICY_PUBLIC",
+    "POLICY_READ_ONLY",
+    "POLICY_USER_ONLY",
     "AccessPolicy",
+    "CacheBackend",
+    "CacheEntry",
     "CacheReference",
     "CacheResponse",
+    "MemoryBackend",
     "PaginatedResponse",
     "Permission",
     "PreviewConfig",
+    "PreviewStrategy",
+    "RefCache",
+    "SizeMode",
     "__version__",
 ]

@@ -82,6 +82,7 @@ compile-bytecode = true
 target-version = "py310"
 line-length = 88
 src = ["src", "tests"]
+exclude = [".agent", "archive"]
 
 [tool.ruff.lint]
 select = [

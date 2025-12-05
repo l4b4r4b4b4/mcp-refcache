@@ -31,122 +31,43 @@ Reference-based caching library for FastMCP servers. Enables:
 - [x] Update tests for new skeleton (25 tests passing)
 - [x] All linting passes (ruff check, ruff format)
 
-### 🔧 In Progress - Core Implementation
+### ✅ Completed - Phase 1: Core Implementation
 
-#### Current Task: RefCache Class Implementation
+#### Backend Protocol & Memory Backend ✅
+- [x] `src/mcp_refcache/backends/base.py` - CacheEntry dataclass + CacheBackend Protocol
+- [x] `src/mcp_refcache/backends/memory.py` - Thread-safe MemoryBackend with TTL support
+- [x] `src/mcp_refcache/backends/__init__.py` - Public exports
+- [x] `tests/test_backends.py` - 27 tests covering all backend operations
 
-**Files to Create/Modify:**
-1. `src/mcp_refcache/backends/base.py` - Backend protocol (abstract interface)
-2. `src/mcp_refcache/backends/memory.py` - In-memory backend implementation
-3. `src/mcp_refcache/backends/__init__.py` - Backend exports
-4. `src/mcp_refcache/cache.py` - RefCache class (main interface)
-5. `tests/test_backends.py` - Backend tests
-6. `tests/test_refcache.py` - RefCache integration tests
-7. Update `src/mcp_refcache/__init__.py` - Add RefCache to exports
+#### RefCache Class ✅
+- [x] `src/mcp_refcache/cache.py` - Full RefCache implementation (~570 lines)
+  - `set()` - Store values with namespace, policy, TTL
+  - `get()` - Get preview with pagination support
+  - `resolve()` - Get full value (permission checked)
+  - `delete()` - Remove entries (permission checked)
+  - `exists()` - Check if reference exists
+  - `clear()` - Clear by namespace or all
+  - `@cached` decorator - For caching function results (sync + async)
+- [x] `tests/test_refcache.py` - 58 tests covering all RefCache operations
+- [x] Updated `src/mcp_refcache/__init__.py` - Export RefCache and backends
 
-**Implementation Plan:**
+#### Test Results
+- **110 tests passing**
+- **90% code coverage**
+- All linting passes (ruff check, ruff format)
 
-##### Phase 1: Backend Protocol & Memory Backend
-```python
-# backends/base.py - Protocol definition
-class CacheBackend(Protocol):
-    def get(self, key: str) -> CacheEntry | None: ...
-    def set(self, key: str, entry: CacheEntry, ttl: float | None = None) -> None: ...
-    def delete(self, key: str) -> bool: ...
-    def exists(self, key: str) -> bool: ...
-    def clear(self, namespace: str | None = None) -> int: ...
-    def keys(self, pattern: str | None = None) -> list[str]: ...
+#### Key Implementation Details
+1. **Actor-based permissions**: `actor="user"` or `actor="agent"` determines permission set
+2. **Reference ID format**: `{cache_name}:{short_hash}` - globally unique, compact
+3. **Preview generation**: Basic sampling for lists/dicts, truncation for strings
+4. **Thread-safe**: MemoryBackend uses `threading.RLock`
+5. **Flexible TTL**: Per-entry or cache-level defaults
 
-# CacheEntry - internal storage format
-@dataclass
-class CacheEntry:
-    value: Any
-    namespace: str
-    policy: AccessPolicy
-    created_at: float
-    expires_at: float | None
-    metadata: dict[str, Any]
-```
-
-##### Phase 2: RefCache Class
-```python
-class RefCache:
-    def __init__(
-        self,
-        name: str = "default",
-        backend: CacheBackend | None = None,  # Defaults to MemoryBackend
-        preview_config: PreviewConfig | None = None,
-        default_policy: AccessPolicy | None = None,
-        default_ttl: float | None = 3600,
-    ): ...
-    
-    # Core operations
-    def set(
-        self,
-        key: str,
-        value: Any,
-        namespace: str = "public",
-        policy: AccessPolicy | None = None,
-        ttl: float | None = None,
-    ) -> CacheReference: ...
-    
-    def get(
-        self,
-        ref_id: str,
-        *,
-        page: int | None = None,
-        page_size: int | None = None,
-        actor: str = "agent",  # "user" or "agent"
-    ) -> CacheResponse: ...
-    
-    def resolve(
-        self,
-        ref_id: str,
-        *,
-        actor: str = "agent",
-    ) -> Any: ...  # Returns full value if permitted
-    
-    def delete(self, ref_id: str, *, actor: str = "agent") -> bool: ...
-    
-    def exists(self, ref_id: str) -> bool: ...
-    
-    # Decorator for tools
-    def cached(
-        self,
-        namespace: str = "public",
-        policy: AccessPolicy | None = None,
-        ttl: float | None = None,
-    ) -> Callable: ...
-```
-
-##### Phase 3: Tests (TDD)
-- Backend protocol compliance tests
-- Memory backend unit tests
-- RefCache integration tests
-- Permission enforcement tests
-- TTL expiration tests
-- Namespace isolation tests
-
-**Key Design Decisions:**
-1. **Actor-based permission checking**: Every operation takes an `actor` parameter ("user" or "agent") to determine which permission set to check
-2. **Reference ID format**: `{cache_name}:{namespace}:{uuid}` for globally unique, parseable refs
-3. **Lazy preview generation**: Previews computed only when needed, not on set
-4. **Thread-safe operations**: Use threading.RLock for memory backend
-5. **Backend-agnostic design**: RefCache works with any backend implementing the Protocol
-
-**Tradeoffs:**
-- Simple actor model (user vs agent) vs. more complex role-based access
-- Preview on get vs. preview on set (chose on-get for flexibility)
-- Full namespace in ref_id vs. separate lookup (chose embedded for simplicity)
-
-### Remaining Tasks
-- [ ] Implement Backend protocol and MemoryBackend
-- [ ] Implement RefCache class
-- [ ] Write comprehensive tests
-- [ ] Implement context limiting (token/char measurement)
-- [ ] Implement preview strategies (truncate, paginate, sample)
-- [ ] Add namespace support with hierarchy
-- [ ] Add FastMCP integration (optional dependency)
+### 🔧 Remaining Tasks - Phase 2
+- [ ] Implement context limiting (`context.py`) - token counting with tiktoken
+- [ ] Implement preview strategies (`preview.py`) - adaptive sampling with step size
+- [ ] Add namespace hierarchy (`namespaces.py`) - inheritance and validation
+- [ ] Add FastMCP integration (`tools/`) - optional dependency
 
 ## Architecture
 
@@ -171,14 +92,14 @@ src/mcp_refcache/
 ├── __init__.py          # Public API exports
 ├── permissions.py       # Permission enum, AccessPolicy ✅
 ├── models.py            # Pydantic models ✅
-├── cache.py             # RefCache class (main interface) 🔧
+├── cache.py             # RefCache class (main interface) ✅
 ├── context.py           # Context limiting (token/char measurement)
 ├── preview.py           # Preview strategies (truncate, paginate, sample)
 ├── namespaces.py        # Namespace hierarchy
 ├── backends/
-│   ├── __init__.py      # Backend exports 🔧
-│   ├── base.py          # Backend protocol 🔧
-│   └── memory.py        # In-memory backend 🔧
+│   ├── __init__.py      # Backend exports ✅
+│   ├── base.py          # Backend protocol ✅
+│   └── memory.py        # In-memory backend ✅
 └── tools/
     ├── __init__.py
     └── mcp_tools.py     # FastMCP integration (optional)
@@ -252,3 +173,14 @@ public                          # Global, anyone can read
 - Complementary to FastMCP's ResponseCachingMiddleware (different purposes)
 - Python >=3.10 to match FastMCP compatibility
 - Reference archived BundesMCP code in `archive/bundesmcp-cache/` for implementation ideas
+- Archived code also copied to `.agent/files/tmp/session/` for easy reference
+
+## Session Log
+
+### 2024-XX-XX: Phase 1 Complete
+- Implemented CacheBackend Protocol and CacheEntry dataclass
+- Implemented thread-safe MemoryBackend with TTL support
+- Implemented RefCache with full CRUD operations
+- Implemented @cached decorator for sync and async functions
+- 110 tests passing, 90% coverage
+- Updated .rules for Python library context (removed FastAPI/microservice specifics)
