@@ -19,7 +19,7 @@
         };
 
         fhsEnv = pkgs.buildFHSEnv {
-          name = "mcp-refcache-dev";
+          name = "mcp-refcache-dev-env";
 
           targetPkgs = pkgs':
             with pkgs'; [
@@ -48,7 +48,7 @@
               # Development tools
               git
               git-lfs
-              gibo # Generate .gitignore templates
+              gibo
               curl
               wget
               unzip
@@ -61,12 +61,6 @@
             ];
 
           profile = ''
-            # Set SSL certificate path for HTTPS requests
-            export SSL_CERT_FILE="/etc/ssl/certs/ca-bundle.crt"
-
-            # Set PYTHONPATH to project root
-            export PYTHONPATH="$PWD/src:$PWD"
-
             echo "📦 mcp-refcache Development Environment"
             echo "========================================"
 
@@ -84,7 +78,7 @@
 
             # Sync dependencies
             if [ -f "pyproject.toml" ]; then
-              echo "🔄 Syncing dependencies from pyproject.toml..."
+              echo "🔄 Syncing dependencies..."
               uv sync --quiet
             else
               echo "⚠️  No pyproject.toml found. Run 'uv init' to create project."
@@ -94,15 +88,51 @@
             echo "✅ Python: $(python --version)"
             echo "✅ uv:     $(uv --version)"
             echo "✅ Virtual environment: activated (.venv)"
-            echo "✅ PYTHONPATH: $PYTHONPATH"
+            echo "✅ PYTHONPATH: $PWD/src:$PWD"
           '';
 
-          runScript = "${pkgs.zsh}/bin/zsh";
+          runScript = ''
+            # Set shell for the environment
+            SHELL=${pkgs.zsh}/bin/zsh
+
+            # Set PYTHONPATH to project root for module imports
+            export PYTHONPATH="$PWD/src:$PWD"
+            export SSL_CERT_FILE="/etc/ssl/certs/ca-bundle.crt"
+
+            echo ""
+            echo "📚 mcp-refcache Quick Reference:"
+            echo ""
+            echo "🔧 Development:"
+            echo "  uv sync                    - Sync dependencies"
+            echo "  uv run pytest              - Run tests"
+            echo "  uv run ruff check .        - Lint code"
+            echo "  uv run ruff format .       - Format code"
+            echo "  uv lock --upgrade          - Update all dependencies"
+            echo ""
+            echo "📦 Package Management:"
+            echo "  uv add <package>           - Add runtime dependency"
+            echo "  uv add --dev <package>     - Add dev dependency"
+            echo "  uv remove <package>        - Remove dependency"
+            echo ""
+            echo "🔗 Git Ignore Templates:"
+            echo "  gibo list                  - List available templates"
+            echo "  gibo dump Python > .gitignore  - Generate Python .gitignore"
+            echo ""
+            echo "🧪 Testing in other projects:"
+            echo "  uv add --editable ../mcp-refcache           - Local dev install"
+            echo "  uv add mcp-refcache@git+https://github.com/l4b4r4b4b4/mcp-refcache"
+            echo ""
+            echo "🚀 Ready to build! 📦"
+            echo ""
+
+            # Start zsh shell
+            exec ${pkgs.zsh}/bin/zsh
+          '';
         };
       in {
         devShells.default = pkgs.mkShell {
           shellHook = ''
-            exec ${fhsEnv}/bin/mcp-refcache-dev
+            exec ${fhsEnv}/bin/mcp-refcache-dev-env
           '';
         };
 
