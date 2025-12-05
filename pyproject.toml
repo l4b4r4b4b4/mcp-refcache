@@ -69,6 +69,7 @@ dev = [
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
     "bandit[toml]>=1.7.0",
+    "fastmcp>=2.13.3",
 ]
 
 [build-system]
@@ -88,7 +89,7 @@ compile-bytecode = true
 target-version = "py310"
 line-length = 88
 src = ["src", "tests"]
-exclude = [".agent", "archive"]
+exclude = [".agent", ".external", "archive"]
 
 [tool.ruff.lint]
 select = [
@@ -191,6 +192,7 @@ parallel = true
 omit = [
     "tests/*",
     "*/__init__.py",
+    "src/mcp_refcache/fastmcp/*",  # Integration code, tested via examples
 ]
 
 [tool.coverage.report]

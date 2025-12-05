@@ -1,0 +1,918 @@
+#!/usr/bin/env python3
+"""Scientific Calculator MCP Server with RefCache Integration.
+
+This example demonstrates how to use mcp-refcache with FastMCP to build
+an MCP server that handles large computational results efficiently.
+
+Features demonstrated:
+- Reference-based caching for large results (matrices, sequences)
+- Preview generation (sample, truncate, paginate strategies)
+- Pagination for accessing large datasets
+- Access control (user vs agent permissions)
+- Private computation (EXECUTE without READ)
+- Both sync and async tool implementations
+- Multiple transport modes (stdio, SSE)
+
+Usage:
+    # Install dependencies
+    uv add "mcp-refcache[mcp]"
+
+    # Run with stdio (for Claude Desktop)
+    python examples/mcp_server.py
+
+    # Run with SSE (for web clients/debugging)
+    python examples/mcp_server.py --transport sse --port 8000
+
+Claude Desktop Configuration:
+    Add to your claude_desktop_config.json:
+    {
+        "mcpServers": {
+            "calculator": {
+                "command": "python",
+                "args": ["/path/to/mcp-refcache/examples/mcp_server.py"]
+            }
+        }
+    }
+"""
+
+from __future__ import annotations
+
+import argparse
+import cmath
+import math
+import re
+import sys
+from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
+
+# =============================================================================
+# Check for FastMCP availability
+# =============================================================================
+
+try:
+    from fastmcp import Context, FastMCP
+except ImportError:
+    print(
+        "Error: FastMCP is not installed. Install with:\n"
+        "  uv add 'mcp-refcache[mcp]'\n"
+        "  # or\n"
+        "  pip install fastmcp>=2.0.0",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+# =============================================================================
+# Import mcp-refcache components
+# =============================================================================
+
+from mcp_refcache import (
+    AccessPolicy,
+    CacheResponse,
+    DefaultActor,
+    Permission,
+    PreviewConfig,
+    PreviewStrategy,
+    RefCache,
+    SizeMode,
+)
+from mcp_refcache.fastmcp import (
+    cache_guide_prompt,
+    cache_instructions,
+    register_admin_tools,
+    with_cache_docs,
+)
+
+# =============================================================================
+# Initialize FastMCP Server
+# =============================================================================
+
+mcp = FastMCP(
+    name="Scientific Calculator",
+    instructions=f"""A scientific calculator with reference-based caching.
+
+Available tools:
+- calculate: Evaluate mathematical expressions
+- generate_sequence: Generate mathematical sequences (Fibonacci, primes, etc.)
+- matrix_operation: Perform matrix operations (multiply, transpose, etc.)
+- store_secret: Store a secret value for private computation
+- compute_with_secret: Use a secret in computation without revealing it
+- get_cached_result: Retrieve or paginate through cached results
+
+Admin tools (restricted):
+- admin_list_references: Browse all cached references
+- admin_get_cache_stats: Detailed cache statistics
+
+{cache_instructions()}
+""",
+)
+
+# =============================================================================
+# Initialize RefCache
+# =============================================================================
+
+# Create a RefCache instance with sensible defaults for the calculator
+cache = RefCache(
+    name="calculator",
+    default_ttl=3600,  # 1 hour TTL
+    preview_config=PreviewConfig(
+        size_mode=SizeMode.CHARACTER,  # Use characters (simpler, no tokenizer needed)
+        max_size=500,  # Max 500 characters in previews
+        default_strategy=PreviewStrategy.SAMPLE,  # Sample large collections
+    ),
+)
+
+# =============================================================================
+# Pydantic Models for Tool Inputs
+# =============================================================================
+
+
+class MathExpression(BaseModel):
+    """Input model for mathematical expressions."""
+
+    expression: str = Field(
+        description="Mathematical expression to evaluate (e.g., 'sin(pi/2) + sqrt(16)')",
+        min_length=1,
+        max_length=1000,
+        json_schema_extra={
+            "examples": ["2 * (3 + 4)", "sin(0.5) + cos(pi/4)", "sqrt(16) + log(100)"]
+        },
+    )
+
+    @field_validator("expression")
+    @classmethod
+    def validate_safe_expression(cls, value: str) -> str:
+        """Validate expression doesn't contain unsafe patterns."""
+        unsafe_pattern = r"(^|[^a-zA-Z])(__.*__|import|exec|eval|open|os|sys|subprocess|getattr|setattr|globals|locals)($|[^a-zA-Z])"
+        if re.search(unsafe_pattern, value):
+            raise ValueError("Potentially unsafe expression detected")
+        return value
+
+
+class SequenceType(str, Enum):
+    """Types of mathematical sequences."""
+
+    FIBONACCI = "fibonacci"
+    PRIME = "prime"
+    ARITHMETIC = "arithmetic"
+    GEOMETRIC = "geometric"
+    TRIANGULAR = "triangular"
+    FACTORIAL = "factorial"
+
+
+class SequenceInput(BaseModel):
+    """Input model for sequence generation."""
+
+    sequence_type: SequenceType = Field(
+        description="Type of sequence to generate",
+    )
+    count: int = Field(
+        default=20,
+        ge=1,
+        le=10000,
+        description="Number of elements to generate",
+    )
+    start: int | None = Field(
+        default=None,
+        description="Starting value (for arithmetic/geometric sequences)",
+    )
+    step: int | None = Field(
+        default=None,
+        description="Step value for arithmetic sequence or ratio for geometric",
+    )
+
+
+class MatrixInput(BaseModel):
+    """Input model for matrix data."""
+
+    data: list[list[float]] = Field(
+        description="Matrix data as nested lists (e.g., [[1, 2], [3, 4]])",
+    )
+
+    @field_validator("data")
+    @classmethod
+    def validate_matrix(cls, value: list[list[float]]) -> list[list[float]]:
+        """Validate matrix is rectangular."""
+        if not value:
+            raise ValueError("Matrix cannot be empty")
+        row_length = len(value[0])
+        if not all(len(row) == row_length for row in value):
+            raise ValueError("All rows must have the same length")
+        return value
+
+
+class MatrixOperation(str, Enum):
+    """Available matrix operations."""
+
+    TRANSPOSE = "transpose"
+    DETERMINANT = "determinant"
+    INVERSE = "inverse"
+    MULTIPLY = "multiply"
+    ADD = "add"
+    SCALAR_MULTIPLY = "scalar_multiply"
+    TRACE = "trace"
+    EIGENVALUES = "eigenvalues"
+
+
+class MatrixOperationInput(BaseModel):
+    """Input model for matrix operations."""
+
+    matrix_a: MatrixInput | str = Field(
+        description="First matrix or reference ID to a cached matrix",
+    )
+    matrix_b: MatrixInput | str | None = Field(
+        default=None,
+        description="Second matrix or reference ID (for multiply/add operations)",
+    )
+    scalar: float | None = Field(
+        default=None,
+        description="Scalar value for scalar_multiply operation",
+    )
+    operation: MatrixOperation = Field(
+        default=MatrixOperation.TRANSPOSE,
+        description="Operation to perform",
+    )
+
+
+class SecretInput(BaseModel):
+    """Input model for storing secret values."""
+
+    name: str = Field(
+        description="Name for the secret (used as key)",
+        min_length=1,
+        max_length=100,
+    )
+    value: float = Field(
+        description="The secret numeric value",
+    )
+
+
+class SecretComputeInput(BaseModel):
+    """Input model for computing with secrets."""
+
+    secret_ref: str = Field(
+        description="Reference ID of the secret value",
+    )
+    expression: str = Field(
+        description="Expression using 'x' as the secret value (e.g., 'x * 2 + 1')",
+    )
+
+
+class CacheQueryInput(BaseModel):
+    """Input model for cache queries."""
+
+    ref_id: str = Field(
+        description="Reference ID to look up",
+    )
+    page: int | None = Field(
+        default=None,
+        ge=1,
+        description="Page number for pagination (1-indexed)",
+    )
+    page_size: int | None = Field(
+        default=None,
+        ge=1,
+        le=100,
+        description="Number of items per page",
+    )
+
+
+# =============================================================================
+# Safe Math Evaluation Context
+# =============================================================================
+
+SAFE_MATH_CONTEXT: dict[str, Any] = {
+    # Basic math
+    "abs": abs,
+    "round": round,
+    "min": min,
+    "max": max,
+    "sum": sum,
+    # Trigonometric
+    "sin": math.sin,
+    "cos": math.cos,
+    "tan": math.tan,
+    "asin": math.asin,
+    "acos": math.acos,
+    "atan": math.atan,
+    "atan2": math.atan2,
+    "sinh": math.sinh,
+    "cosh": math.cosh,
+    "tanh": math.tanh,
+    # Exponential/Logarithmic
+    "sqrt": lambda x: cmath.sqrt(x) if x < 0 else math.sqrt(x),
+    "exp": math.exp,
+    "log": math.log,
+    "log10": math.log10,
+    "log2": math.log2,
+    "pow": pow,
+    # Rounding
+    "ceil": math.ceil,
+    "floor": math.floor,
+    "trunc": math.trunc,
+    # Other
+    "factorial": math.factorial,
+    "gcd": math.gcd,
+    "degrees": math.degrees,
+    "radians": math.radians,
+    # Constants
+    "pi": math.pi,
+    "e": math.e,
+    "tau": math.tau,
+    "inf": math.inf,
+    # Complex numbers
+    "j": complex(0, 1),
+    "i": complex(0, 1),
+    "phase": cmath.phase,
+    "polar": cmath.polar,
+}
+
+
+# =============================================================================
+# Tool Implementations
+# =============================================================================
+
+
+@mcp.tool
+def calculate(expression: str) -> dict[str, Any]:
+    """Evaluate a mathematical expression safely.
+
+    Supports standard math functions (sin, cos, sqrt, log, etc.) and constants (pi, e).
+    Use ** for exponentiation (e.g., '2**3' for 2³).
+
+    Examples:
+        - "2 * (3 + 4)" → 14
+        - "sin(pi/2)" → 1.0
+        - "sqrt(16) + log(100)" → 8.605...
+        - "factorial(10)" → 3628800
+    """
+    # Validate input
+    validated = MathExpression(expression=expression)
+
+    # Replace ^ with ** for exponentiation (common notation)
+    expr = validated.expression.replace("^", "**")
+
+    try:
+        # Evaluate in safe context
+        result = eval(expr, {"__builtins__": {}}, SAFE_MATH_CONTEXT)
+
+        # Handle complex numbers
+        if isinstance(result, complex) and abs(result.imag) < 1e-14:
+            result = float(result.real)
+
+        # For simple scalar results, return directly
+        if isinstance(result, (int, float, complex)):
+            return {
+                "result": result,
+                "expression": validated.expression,
+                "type": type(result).__name__,
+            }
+
+        # For larger results, cache them
+        ref = cache.set(
+            key=f"calc_{hash(validated.expression)}",
+            value=result,
+            namespace="public",
+        )
+
+        response = cache.get(ref.ref_id)
+        return {
+            "result": response.preview,
+            "ref_id": ref.ref_id,
+            "expression": validated.expression,
+            "cached": True,
+        }
+
+    except Exception as e:
+        raise ValueError(f"Error evaluating expression: {e}") from e
+
+
+@mcp.tool
+@with_cache_docs(returns_reference=True, supports_pagination=True)
+async def generate_sequence(
+    sequence_type: str,
+    count: int = 20,
+    start: int | None = None,
+    step: int | None = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Generate a mathematical sequence.
+
+    Sequence types:
+        - fibonacci: Fibonacci sequence (0, 1, 1, 2, 3, 5, 8, ...)
+        - prime: Prime numbers (2, 3, 5, 7, 11, ...)
+        - arithmetic: Arithmetic sequence with given start and step
+        - geometric: Geometric sequence with given start and ratio
+        - triangular: Triangular numbers (1, 3, 6, 10, 15, ...)
+        - factorial: Factorials (1, 1, 2, 6, 24, 120, ...)
+
+    For large sequences, returns a reference with a preview.
+    Use get_cached_result to paginate through the full sequence.
+    """
+    # Validate input
+    validated = SequenceInput(
+        sequence_type=SequenceType(sequence_type),
+        count=count,
+        start=start,
+        step=step,
+    )
+
+    if ctx:
+        await ctx.info(
+            f"Generating {validated.count} {validated.sequence_type.value} numbers..."
+        )
+
+    # Generate the sequence
+    sequence: list[int | float] = []
+
+    if validated.sequence_type == SequenceType.FIBONACCI:
+        a, b = 0, 1
+        for _ in range(validated.count):
+            sequence.append(a)
+            a, b = b, a + b
+
+    elif validated.sequence_type == SequenceType.PRIME:
+
+        def is_prime(n: int) -> bool:
+            if n < 2:
+                return False
+            if n == 2:
+                return True
+            if n % 2 == 0:
+                return False
+            return all(n % i != 0 for i in range(3, int(n**0.5) + 1, 2))
+
+        num = 2
+        while len(sequence) < validated.count:
+            if is_prime(num):
+                sequence.append(num)
+            num += 1
+
+    elif validated.sequence_type == SequenceType.ARITHMETIC:
+        start_val = validated.start if validated.start is not None else 0
+        step_val = validated.step if validated.step is not None else 1
+        sequence = [start_val + i * step_val for i in range(validated.count)]
+
+    elif validated.sequence_type == SequenceType.GEOMETRIC:
+        start_val = validated.start if validated.start is not None else 1
+        ratio = validated.step if validated.step is not None else 2
+        sequence = [start_val * (ratio**i) for i in range(validated.count)]
+
+    elif validated.sequence_type == SequenceType.TRIANGULAR:
+        sequence = [(n * (n + 1)) // 2 for n in range(1, validated.count + 1)]
+
+    elif validated.sequence_type == SequenceType.FACTORIAL:
+        for n in range(validated.count):
+            sequence.append(math.factorial(n))
+
+    # Cache the result
+    ref = cache.set(
+        key=f"seq_{validated.sequence_type.value}_{validated.count}",
+        value=sequence,
+        namespace="public",
+        tool_name="generate_sequence",
+    )
+
+    # Get preview
+    response = cache.get(ref.ref_id)
+
+    if ctx:
+        await ctx.info(f"Generated {len(sequence)} numbers, cached as {ref.ref_id}")
+
+    return {
+        "ref_id": ref.ref_id,
+        "sequence_type": validated.sequence_type.value,
+        "total_items": len(sequence),
+        "preview": response.preview,
+        "preview_strategy": response.preview_strategy.value,
+        "message": f"Generated {len(sequence)} {validated.sequence_type.value} numbers. Use get_cached_result to paginate.",
+    }
+
+
+@mcp.tool
+@with_cache_docs(returns_reference=True)
+async def matrix_operation(
+    matrix_a: list[list[float]],
+    operation: str = "transpose",
+    matrix_b: list[list[float]] | None = None,
+    scalar: float | None = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Perform matrix operations.
+
+    Operations:
+        - transpose: Transpose the matrix
+        - determinant: Calculate determinant (square matrices only)
+        - inverse: Calculate inverse (square matrices only)
+        - multiply: Matrix multiplication (requires matrix_b)
+        - add: Matrix addition (requires matrix_b)
+        - scalar_multiply: Multiply by scalar (requires scalar)
+        - trace: Sum of diagonal elements (square matrices only)
+
+    Large results are cached and returned as references with previews.
+    """
+    # Validate inputs
+    validated_a = MatrixInput(data=matrix_a)
+    validated_op = MatrixOperation(operation)
+
+    if ctx:
+        rows, cols = len(validated_a.data), len(validated_a.data[0])
+        await ctx.info(f"Performing {operation} on {rows}x{cols} matrix...")
+
+    # Convert to numpy-like operations (pure Python for simplicity)
+    a = validated_a.data
+    result: Any = None
+
+    if validated_op == MatrixOperation.TRANSPOSE:
+        result = [[a[j][i] for j in range(len(a))] for i in range(len(a[0]))]
+
+    elif validated_op == MatrixOperation.DETERMINANT:
+        if len(a) != len(a[0]):
+            raise ValueError("Determinant requires a square matrix")
+        # Simple 2x2 and 3x3 determinant
+        if len(a) == 2:
+            result = a[0][0] * a[1][1] - a[0][1] * a[1][0]
+        elif len(a) == 3:
+            result = (
+                a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
+                - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+                + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0])
+            )
+        else:
+            raise ValueError("Determinant only implemented for 2x2 and 3x3 matrices")
+
+    elif validated_op == MatrixOperation.TRACE:
+        if len(a) != len(a[0]):
+            raise ValueError("Trace requires a square matrix")
+        result = sum(a[i][i] for i in range(len(a)))
+
+    elif validated_op == MatrixOperation.SCALAR_MULTIPLY:
+        if scalar is None:
+            raise ValueError("scalar_multiply requires a scalar value")
+        result = [[cell * scalar for cell in row] for row in a]
+
+    elif validated_op == MatrixOperation.ADD:
+        if matrix_b is None:
+            raise ValueError("add requires matrix_b")
+        validated_b = MatrixInput(data=matrix_b)
+        b = validated_b.data
+        if len(a) != len(b) or len(a[0]) != len(b[0]):
+            raise ValueError("Matrices must have the same dimensions for addition")
+        result = [[a[i][j] + b[i][j] for j in range(len(a[0]))] for i in range(len(a))]
+
+    elif validated_op == MatrixOperation.MULTIPLY:
+        if matrix_b is None:
+            raise ValueError("multiply requires matrix_b")
+        validated_b = MatrixInput(data=matrix_b)
+        b = validated_b.data
+        if len(a[0]) != len(b):
+            raise ValueError(
+                f"Cannot multiply: matrix_a columns ({len(a[0])}) != matrix_b rows ({len(b)})"
+            )
+        result = [
+            [sum(a[i][k] * b[k][j] for k in range(len(b))) for j in range(len(b[0]))]
+            for i in range(len(a))
+        ]
+
+    elif validated_op == MatrixOperation.INVERSE:
+        if len(a) != len(a[0]):
+            raise ValueError("Inverse requires a square matrix")
+        if len(a) != 2:
+            raise ValueError("Inverse only implemented for 2x2 matrices in this demo")
+        det = a[0][0] * a[1][1] - a[0][1] * a[1][0]
+        if abs(det) < 1e-10:
+            raise ValueError("Matrix is singular (determinant is zero)")
+        result = [
+            [a[1][1] / det, -a[0][1] / det],
+            [-a[1][0] / det, a[0][0] / det],
+        ]
+
+    # For scalar results, return directly
+    if isinstance(result, (int, float)):
+        return {
+            "operation": operation,
+            "result": result,
+            "type": "scalar",
+        }
+
+    # For matrix results, cache them
+    ref = cache.set(
+        key=f"matrix_{operation}_{id(a)}",
+        value=result,
+        namespace="public",
+        tool_name="matrix_operation",
+    )
+
+    response = cache.get(ref.ref_id)
+
+    return {
+        "ref_id": ref.ref_id,
+        "operation": operation,
+        "result_shape": f"{len(result)}x{len(result[0])}",
+        "preview": response.preview,
+        "message": "Matrix result cached. Use get_cached_result for full data.",
+    }
+
+
+@mcp.tool
+def store_secret(name: str, value: float) -> dict[str, Any]:
+    """Store a secret value that agents cannot read, only use in computations.
+
+    This demonstrates the EXECUTE permission - agents can use the value
+    in compute_with_secret without ever seeing what it is.
+
+    Example use case: Store an API rate limit, encryption key, or
+    sensitive constant that should influence computations but not be exposed.
+    """
+    validated = SecretInput(name=name, value=value)
+
+    # Create a policy where agents can EXECUTE but not READ
+    secret_policy = AccessPolicy(
+        user_permissions=Permission.FULL,  # Users can see everything
+        agent_permissions=Permission.EXECUTE,  # Agents can only use in computation
+    )
+
+    ref = cache.set(
+        key=f"secret_{validated.name}",
+        value=validated.value,
+        namespace="user:secrets",  # User-owned namespace
+        policy=secret_policy,
+        tool_name="store_secret",
+    )
+
+    return {
+        "ref_id": ref.ref_id,
+        "name": validated.name,
+        "message": f"Secret '{validated.name}' stored. Agents can use it in compute_with_secret but cannot read the value.",
+        "permissions": {
+            "user": "FULL (can read, write, execute)",
+            "agent": "EXECUTE only (can use in computation, cannot read)",
+        },
+    }
+
+
+@mcp.tool
+@with_cache_docs(accepts_references=True, private_computation=True)
+def compute_with_secret(secret_ref: str, expression: str) -> dict[str, Any]:
+    """Compute using a secret value without revealing it.
+
+    The secret is available as 'x' in the expression.
+    This demonstrates private computation - the agent orchestrates
+    the computation but never sees the actual secret value.
+
+    Examples:
+        - "x * 2" - Double the secret
+        - "x ** 2 + 1" - Square the secret and add 1
+        - "sin(x)" - Sine of the secret
+    """
+    validated = SecretComputeInput(secret_ref=secret_ref, expression=expression)
+
+    # Create a system actor to resolve the secret (bypasses agent restrictions)
+    system_actor = DefaultActor.system()
+
+    try:
+        # Resolve the secret value as system (has full access)
+        secret_value = cache.resolve(validated.secret_ref, actor=system_actor)
+    except KeyError as e:
+        raise ValueError(f"Secret reference '{validated.secret_ref}' not found") from e
+
+    # Create safe context with the secret as 'x'
+    compute_context = {**SAFE_MATH_CONTEXT, "x": secret_value}
+
+    # Validate and evaluate
+    expr = validated.expression.replace("^", "**")
+
+    try:
+        result = eval(expr, {"__builtins__": {}}, compute_context)
+
+        # Handle complex results
+        if isinstance(result, complex) and abs(result.imag) < 1e-14:
+            result = float(result.real)
+
+        return {
+            "result": result,
+            "expression": validated.expression,
+            "secret_ref": validated.secret_ref,
+            "message": "Computed using secret value (value not revealed)",
+        }
+
+    except Exception as e:
+        raise ValueError(f"Error in computation: {e}") from e
+
+
+@mcp.tool
+@with_cache_docs(accepts_references=True, supports_pagination=True)
+async def get_cached_result(
+    ref_id: str,
+    page: int | None = None,
+    page_size: int | None = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Retrieve a cached result, optionally with pagination.
+
+    Use this to:
+    - Get a preview of a cached value
+    - Paginate through large sequences or matrices
+    - Access the full value of a cached result
+
+    Pagination:
+        - page: Page number (1-indexed)
+        - page_size: Items per page (default varies by data type)
+    """
+    validated = CacheQueryInput(ref_id=ref_id, page=page, page_size=page_size)
+
+    if ctx:
+        await ctx.info(f"Retrieving cached result: {validated.ref_id}")
+
+    try:
+        # Get with pagination if specified
+        response: CacheResponse = cache.get(
+            validated.ref_id,
+            page=validated.page,
+            page_size=validated.page_size,
+            actor="agent",  # Agent access - respects permissions
+        )
+
+        result: dict[str, Any] = {
+            "ref_id": validated.ref_id,
+            "preview": response.preview,
+            "preview_strategy": response.preview_strategy.value,
+            "total_items": response.total_items,
+        }
+
+        # Add pagination info if applicable
+        if response.page is not None:
+            result["page"] = response.page
+            result["total_pages"] = response.total_pages
+
+        # Add size info
+        if response.original_size:
+            result["original_size"] = response.original_size
+            result["preview_size"] = response.preview_size
+
+        return result
+
+    except PermissionError as e:
+        return {
+            "error": "Permission denied",
+            "message": str(e),
+            "ref_id": validated.ref_id,
+        }
+    except KeyError:
+        return {
+            "error": "Not found",
+            "message": f"Reference '{validated.ref_id}' not found or expired",
+            "ref_id": validated.ref_id,
+        }
+
+
+# =============================================================================
+# Admin Tools (Permission-Gated)
+# =============================================================================
+
+
+async def is_admin(ctx: Context | None) -> bool:
+    """Check if the current context has admin privileges.
+
+    In a real application, this would check:
+    - User authentication/authorization
+    - Role-based access control
+    - Session tokens, etc.
+
+    For this demo, we always return False (no admin access).
+    Override this in your own server with proper auth logic.
+    """
+    # Demo: No admin access by default
+    # In production, implement proper auth:
+    # user_id = getattr(ctx, 'user_id', None)
+    # return user_id in ADMIN_USER_IDS
+    return False
+
+
+# Register admin tools with the cache
+# These are protected by the is_admin check
+_admin_tools = register_admin_tools(
+    mcp,
+    cache,
+    admin_check=is_admin,
+    prefix="admin_",
+    include_dangerous=False,  # Don't expose full values
+)
+
+
+# =============================================================================
+# Prompts for Guidance
+# =============================================================================
+
+
+@mcp.prompt
+def calculator_guide() -> str:
+    """Guide for using the Scientific Calculator MCP server."""
+    return f"""# Scientific Calculator Guide
+
+## Quick Start
+
+1. **Basic Calculations**
+   Use `calculate` for math expressions:
+   - `calculate("2 + 2")` → 4
+   - `calculate("sin(pi/2)")` → 1.0
+   - `calculate("sqrt(16) + log(100)")` → 8.605...
+
+2. **Generate Sequences**
+   Use `generate_sequence` for mathematical sequences:
+   - `generate_sequence("fibonacci", count=50)` → First 50 Fibonacci numbers
+   - `generate_sequence("prime", count=100)` → First 100 prime numbers
+
+3. **Matrix Operations**
+   Use `matrix_operation` for linear algebra:
+   - `matrix_operation([[1,2],[3,4]], "determinant")` → -2
+   - `matrix_operation([[1,2],[3,4]], "transpose")` → [[1,3],[2,4]]
+
+## Working with Large Results
+
+Large results are cached and returned as references with previews.
+Use `get_cached_result` to paginate:
+
+```
+# Generate a large sequence
+result = generate_sequence("fibonacci", count=1000)
+# result.ref_id = "abc123..."
+
+# Get page 2 of results
+get_cached_result("abc123...", page=2, page_size=50)
+```
+
+## Private Computation (Secrets)
+
+Store values that agents can use but not see:
+
+```
+# Store a secret
+store_secret("my_key", 42.0)
+# Returns ref_id for the secret
+
+# Use in computation (agent never sees 42.0)
+compute_with_secret("ref_id...", "x * 2 + 1")
+# Returns 85.0
+```
+
+## Available Math Functions
+
+- **Basic**: abs, round, min, max, sum, pow
+- **Trigonometric**: sin, cos, tan, asin, acos, atan, sinh, cosh, tanh
+- **Exponential**: sqrt, exp, log, log10, log2
+- **Rounding**: ceil, floor, trunc
+- **Other**: factorial, gcd, degrees, radians
+- **Constants**: pi, e, tau, inf, i/j (imaginary)
+
+---
+
+{cache_guide_prompt()}
+"""
+
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
+
+def main() -> None:
+    """Run the MCP server."""
+    parser = argparse.ArgumentParser(
+        description="Scientific Calculator MCP Server with RefCache",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse"],
+        default="stdio",
+        help="Transport mode (default: stdio for Claude Desktop)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port for SSE transport (default: 8000)",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host for SSE transport (default: 127.0.0.1)",
+    )
+
+    args = parser.parse_args()
+
+    if args.transport == "stdio":
+        # Standard stdio transport for Claude Desktop
+        mcp.run(transport="stdio")
+    else:
+        # SSE transport for web clients / debugging
+        mcp.run(
+            transport="sse",
+            host=args.host,
+            port=args.port,
+        )
+
+
+if __name__ == "__main__":
+    main()

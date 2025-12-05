@@ -44,6 +44,10 @@
     "langfuse-docs": {
       "command": "npx",
       "args": ["mcp-remote", "https://langfuse.com/api/mcp"]
+    },
+    "calculator": {
+      "command": "uv",
+      "args": ["run", "python", "examples/mcp_server.py"]
     }
   }
 }
