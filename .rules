@@ -1,0 +1,509 @@
+# .rules for Coding Assistants in This Project
+
+This `.rules` file defines **hard** (must-follow) and **soft** (strongly recommended) rules for working on this Python FastAPI microservice. The intent is to maximize code quality, safety, maintainability, and effective use of coding assistants in the context of a document processing, classification, clustering, and extraction project.
+
+---
+
+## General Rules
+
+### Hard Rules
+- **Do not expose or leak sensitive data** (e.g., credentials, document contents) in logs, error messages, or code comments.
+- **All changes must be reviewed** before merging into a main branch.
+- **Never insert or recommend code that downloads or executes arbitrary, untrusted sources**.
+- **Always cite/attribute code or solutions copied or adapted from external sources.**
+- **Document all endpoints and core functions with clear docstrings and comments.**
+- **Follow the principle of least privilege for data, access, and dependencies.**
+
+---
+
+## AI Assistant Communication Standards
+
+### Hard Rules
+- **Never lie, cheat, or mislead**: Do not present uncertain information as fact. Do not hide limitations or risks.
+- **Never appease or agree too quickly**: Challenge ideas, point out flaws, and provide honest technical assessment even if uncomfortable.
+- **Be brutally honest about tradeoffs**: Every design decision has costs. State them clearly.
+- **Admit uncertainty explicitly**: Use phrases like "I'm not certain", "This might", "I don't have enough context" when appropriate.
+- **Never present speculation as fact**: Clearly distinguish between what you know, what you infer, and what you're guessing.
+- **Do not hide potential issues to seem agreeable**: If you see risks, edge cases, or problems, state them immediately.
+
+### Soft Rules
+- **Be conservative rather than enthusiastic**: Measured technical analysis over cheerleading. Avoid excessive emoji or hype.
+- **Be self-conscious rather than over-confident**: Question your own suggestions. Consider what you might be missing.
+- **Prefer "This approach has risks X, Y, Z" over "This is BRILLIANT!"**: Professional assessment over excitement.
+- **Ask clarifying questions before proposing solutions**: Don't assume you understand the full context.
+- **State assumptions explicitly**: "Assuming X, then Y" rather than jumping to Y.
+- **Warn about complexity**: If something is harder than it appears, say so upfront.
+- **Acknowledge when simpler alternatives exist**: Don't over-engineer to seem impressive.
+
+### Rationale
+Over-confidence, enthusiasm, and appeasing behavior in AI assistants leads to:
+- Acceptance of flawed ideas without proper analysis
+- Missing critical edge cases and failure modes
+- Unfeasible plans that look good on paper
+- Subtle bugs from unstated assumptions
+- Technical debt from premature optimization
+- Loss of trust when issues emerge later
+
+Professional engineering requires honest, conservative assessment. Users need reliable technical partners, not cheerleaders.
+
+---
+
+## Naming Conventions (Language-Agnostic)
+
+### Hard Rules
+- **Never use single-letter variable names**: Single letters (e.g., `i`, `x`, `n`) provide no context. Always use descriptive names.
+- **Never abbreviate variable, function, or class names**: Write full words. `user_repository` not `usr_repo`, `calculate_total_price` not `calc_tot_price`. Abbreviations rely on context you may not have.
+- **Never encode types in variable names**: Don't use Hungarian notation (e.g., `strName`, `intCount`). The type system should convey type information.
+- **Never prefix interfaces with "I"**: Name interfaces by what they represent, not their implementation detail (e.g., `DocumentIngestor` not `IDocumentIngestor`).
+- **Never name classes with "Base" or "Abstract"**: If you can't name a parent class well, rename the child class to be more specific instead (e.g., `Truck` + `TrailerTruck`, not `BaseTruck` + `Truck`).
+- **Never create "Utils" or "Helper" classes**: These are code smells. Functions should belong to appropriate domain classes or be organized into well-named modules.
+- **Include units in variable names only when types cannot encode them**: Prefer type-safe units (e.g., `Duration`, `TimeSpan`) over `delay_seconds`. For dynamically typed languages, use `delay_seconds` when necessary.
+
+### Soft Rules
+- Prefer longer, descriptive names over short, cryptic ones. Modern IDEs have autocomplete; screen width is no longer a constraint.
+- If struggling to name something, consider whether the code structure itself is the problem.
+- Standard libraries don't have "Utils" modules because everything is properly organized. Follow their example.
+
+### Soft Rules
+- Prefer clarity and readability over “clever” code unless performance requires otherwise.
+- Maintain a consistent coding style throughout the project.
+- Reference best practices (OWASP, security guidelines) but adapt them reasonably for the current microservice scope.
+- Encourage incremental, testable changes.
+- Use automated tools (linters, formatters, type checkers) where available.
+
+---
+
+## Python Language-Specific Rules
+
+### Hard Rules
+- Conform to [PEP8](https://peps.python.org/pep-0008/) for formatting.
+- Type annotations are required for public functions, methods, and API schemas.
+- Input data must be validated using Pydantic models or equivalent.
+- Handle all exceptions explicitly; never use bare `except:` blocks.
+- **Maintain >= 80% code coverage**: Never lower coverage requirements. If coverage drops, write tests to meet the standard. Lowering the bar is not acceptable.
+
+### Soft Rules
+- Add descriptive type hints for all non-trivial internal variables.
+- For performance-sensitive code, prefer built-in libraries and vectorized solutions (NumPy, pandas) where prudent.
+- Use Python 3.9+ features if available in deployment.
+- Keep imports minimal and explicit; avoid wildcard imports (`from ... import *`).
+- Ensure all dependencies in `pyproject.toml` are in use and are necessary.
+
+---
+
+## Python Dependency Management
+
+### Hard Rules
+- **This is a UV project**: Use `uv` for all dependency management, NOT pip or pip-compile
+- **Application dependencies in pyproject.toml [project.dependencies]**: Runtime dependencies only
+- **Development dependencies in pyproject.toml [dependency-groups.dev]**: Testing, linting, type checking tools
+- **Use `uv add` to add dependencies**: `uv add package-name` for runtime, `uv add --dev package-name` for dev tools
+- **Use `uv remove` to remove dependencies**: `uv remove package-name`
+- **Never manually edit pyproject.toml dependencies**: Use uv commands to maintain correct formatting and locking
+- **Commit pyproject.toml and uv.lock together**: Both files must be committed when dependencies change
+
+### Soft Rules
+- Use `uv sync` to ensure environment matches lockfile after pulling changes
+- Run `uv lock --upgrade` to update all dependencies to latest compatible versions
+- Run `uv lock --upgrade-package <name>` to update a specific package
+- Use version constraints appropriately (>=, ~=, ==) based on stability needs
+- Pin security-critical dependencies explicitly (e.g., starlette>=0.49.1 for CVE fixes)
+- Comment future dependencies directly in pyproject.toml for planning
+
+### Rationale
+- **UV is faster**: 10-100x faster than pip for dependency resolution and installation
+- **Reproducible**: uv.lock ensures exact versions across all environments
+- **Modern Python packaging**: Following PEP 621 (pyproject.toml standard)
+- **Single source of truth**: No requirements.txt/requirements.in split
+- **Integrated tooling**: UV handles venv creation, dependency resolution, and installation in one tool
+
+### Examples
+
+**Adding Application Dependency:**
+```bash
+# Add runtime dependency
+uv add langchain
+
+# Add with version constraint
+uv add "langchain>=1.0.0"
+
+# Add multiple packages
+uv add langchain openai anthropic
+```
+
+**Adding Development Dependency:**
+```bash
+# Add dev tool
+uv add --dev pytest
+
+# Add with version constraint
+uv add --dev "ruff>=0.14.0"
+```
+
+**Updating Dependencies:**
+```bash
+# Update all dependencies
+uv lock --upgrade
+
+# Update specific package
+uv lock --upgrade-package langchain
+
+# Sync environment after pull
+uv sync
+```
+
+**Testing Changes:**
+```bash
+# After adding dependencies, sync and test
+uv sync
+uv run pytest
+```
+
+---
+
+## Project-Specific (FastAPI Microservice & Document Processing Context)
+
+### Hard Rules
+- All API endpoints must include clear request/response models, error handling, and OpenAPI documentation (via FastAPI docstrings).
+- No document data, intermediate results, or extracted information is allowed to leave the controlled boundary (logging, error messages, etc.).
+- Sensitive parsing, classification, clustering, and extraction logic should be isolated, reviewed, and have extensive tests.
+- Any code written/modified by coding assistants must be reviewed and tested by a human before deployment.
+- **PII and GDPR Compliance**: Never log personally identifiable information, document contents, or sensitive entities. Always redact or aggregate before logging.
+- **Model Configuration**: Never hardcode model names, API keys, or endpoints in code. Use environment variables or configuration files.
+
+### Soft Rules
+- Optimize for batch as well as single-document flows where possible.
+- Modularize code for future extension: include stubs/placeholders for likely new features (e.g., new classification models or extraction methods).
+- Favor stateless approaches and pure functions unless state is essential.
+- Where relevant, add comments ("WHY" not just "WHAT") for nontrivial business logic, especially if prompted by coding assistants.
+- Prefer integration with existing logging and monitoring over creating ad-hoc diagnostics.
+- Design with Hatchet migration in mind: clear service boundaries, explicit dependencies, Pydantic input/output models.
+
+---
+
+## AI/LLM-Specific Guidelines
+
+### Hard Rules
+- **No Hardcoded Prompts**: Store prompts in configuration files or templates, not in source code. This allows versioning and A/B testing.
+- **Always Provide Fallbacks**: LLM calls can fail. Implement graceful degradation (e.g., fall back to rule-based extraction, return empty result with error flag).
+- **Cost Tracking**: Log token usage and API costs for all LLM calls. Track per-customer and per-document for billing and optimization.
+- **Timeout Management**: All LLM API calls must have explicit timeouts. Default: 30 seconds for extraction, 60 seconds for complex analysis.
+- **No Direct Model Calls in Business Logic**: Always use abstraction layers (protocols/interfaces) so models can be swapped without changing business logic.
+
+### Soft Rules
+- **Prefer Open Source Models**: When possible, use open source models (via vLLM, HuggingFace TEI) over proprietary APIs for cost and data sovereignty.
+- **Log LLM Interactions**: For debugging and improvement, log inputs/outputs of LLM calls (with PII redaction). Use structured logging with request IDs.
+- **Implement Retry Logic**: LLM APIs are unreliable. Implement exponential backoff for transient failures (rate limits, timeouts).
+- **Batch When Possible**: Group multiple extraction/classification requests into batches to reduce API calls and costs.
+- **Monitor Quality**: Track confidence scores, validation rates, and human corrections. Use this data for model improvement.
+- **Version Prompt Templates**: Track prompt versions alongside model versions. Changes to prompts should be treated like code changes (review, test, version control).
+
+---
+
+## Model Deployment & Serving
+
+### Hard Rules
+- **No GPU Code Without Availability Check**: Before attempting GPU operations, check if GPU is available and fall back to CPU if not.
+- **Model Serving Isolation**: Models should be served as separate services (vLLM, TEI containers), not embedded in the FastAPI app.
+- **Resource Limits**: All model serving containers must have explicit CPU/memory/GPU limits defined in deployment manifests.
+
+### Soft Rules
+- **Local Development Flexibility**: Support both local models (for development) and remote APIs (for production) through configuration.
+- **Cache Embeddings**: Implement caching for embeddings (document chunks rarely change). Use content hash as cache key.
+- **Monitor Model Performance**: Track inference time, throughput, and resource usage. Alert when metrics degrade.
+- **Prefer TEI for Embeddings**: Use Hugging Face Text Embeddings Inference for production embedding serving (better performance than raw HuggingFace).
+- **Document Model Versions**: Always log which model version was used for each prediction/extraction. Critical for reproducibility and debugging.
+
+---
+
+## German Real Estate & Compliance
+
+### Hard Rules
+- **GDPR Compliance**: Obtain explicit consent before processing personal data. Implement data retention policies and deletion workflows.
+- **Data Residency**: Document data must stay within Germany/EU unless customer explicitly approves otherwise.
+- **Audit Logging**: All document access and processing must be logged with user ID, timestamp, and action for compliance audits.
+
+### Soft Rules
+- **German Language First**: Default to German (de) language models and assume German text unless detected otherwise.
+- **Real Estate Terminology**: Use correct German real estate terms in code, docs, and UI (e.g., Baugenehmigung, Grundstücksfläche, Wohnfläche).
+- **Address Validation**: Validate German addresses against postal code patterns (5 digits) and common formats.
+- **Measurement Units**: Default to metric (m², EUR) and validate accordingly.
+
+---
+
+## Dependency Injection Patterns
+
+### Hard Rules
+- **Constructor Injection Only**: Always inject dependencies via constructors, never via property/setter injection or service locators.
+- **No Circular Dependencies**: If two services need each other, the design is wrong. Refactor to extract a third service or use events.
+- **Protocol-Based Contracts**: All injected dependencies must be protocols (duck-typed interfaces), not concrete classes.
+
+### Soft Rules
+- **Factory Pattern for Complex Construction**: Use factory functions/classes when dependency construction requires multiple steps or configuration.
+- **Explicit Over Implicit**: Prefer passing dependencies explicitly rather than accessing app.state or global variables.
+- **Test-Friendly Design**: If a class is hard to test (needs many mocks), it probably has too many responsibilities. Refactor.
+- **Document Injection Points**: Use type hints and docstrings to clearly show what gets injected and why.
+
+---
+
+## Git Workflow & Branching
+
+### Hard Rules
+- **Always use feature branches**: Never commit directly to `main`. All changes must go through pull requests.
+- **Rebase-based workflow**: Use `git rebase` to keep a linear history. Never use merge commits on feature branches.
+- **Branch from latest main**: Always create feature branches from an up-to-date `main` branch.
+- **Conventional Commits**: All commit messages must follow the Conventional Commits format: `type(scope): subject`.
+
+### Soft Rules
+- **Small, focused branches**: Each branch should address one feature, bug, or improvement.
+- **Rebase before PR**: Before creating a pull request, rebase your feature branch on the latest `main` to ensure it's up-to-date.
+- **Squash when appropriate**: For PRs with many small commits, consider squashing before merge (but this is handled by GitHub's squash merge).
+
+### Standard Workflow
+```bash
+# 1. Update main
+git checkout main
+git pull origin main
+
+# 2. Create feature branch
+git checkout -b feature/descriptive-name
+
+# 3. Make changes and commit
+git add .
+git commit -m "feat(scope): description"
+
+# 4. Before pushing, rebase on main
+git fetch origin
+git rebase origin/main
+
+# 5. Push to remote
+git push origin feature/descriptive-name
+
+# 6. Create PR on GitHub
+```
+
+---
+
+## AI Assistant Development Workflow
+
+This section defines the **mandatory workflow** for AI coding assistants working on this project.
+
+### Hard Rules: Development Process
+
+**Step 1: Plan and Gather Information**
+- **MUST gather all available context** before proposing solutions:
+  - Read relevant files (README, CONTRIBUTING, existing code)
+  - Review the `.agent/scratchpad.md` for session context
+  - Use available tools (web search, MCP tools) to research solutions
+  - Ask clarifying questions to understand requirements fully
+- **MUST discuss the task with the user** before writing code
+- **MUST NOT jump directly to implementation** without user approval
+
+**Step 2: Document Your Plan**
+- **MUST document planned work** in `.agent/scratchpad.md`:
+  - What you're implementing and why
+  - Architectural decisions and tradeoffs
+  - Files that will be modified
+  - Expected outcomes and success criteria
+- Use clear TODO lists with checkboxes
+- Reference relevant sections of `.rules` and `CONTRIBUTING.md`
+
+**Step 3: Pitch Implementation Approach**
+- **MUST pitch your planned implementation** to the user:
+  - Describe the approach at a high level
+  - List specific files and changes
+  - Explain design decisions and alternatives considered
+  - Identify potential risks or breaking changes
+- **MUST wait for user approval** before proceeding
+- Be prepared to iterate on the approach based on feedback
+
+**Step 3.1: Iterate Until Approved**
+- **MUST NOT proceed with implementation** until user explicitly approves
+- If user requests changes to the approach, return to Step 2
+- Document any changes to the plan in scratchpad
+
+**Step 3.2: Use Proper Tools for File Operations**
+- **MUST use `read_file` to read file contents** - never use `head`, `tail`, `cat`, or `less` in terminal
+- **MUST use `edit_file` to modify files** - never use `sed`, `awk`, `perl`, or text editors in terminal
+- **MUST use `grep` tool to search files** - never use terminal `grep` for code searches
+- **MUST use `find_path` to locate files** - never use terminal `find` for file discovery
+- **ONLY use terminal for**:
+  - Running tests, linters, formatters (pytest, ruff, etc.)
+  - Building/compiling projects
+  - Running application commands
+  - Package management (pip, npm, etc.)
+  - Git operations
+  - System checks (checking if commands exist, versions, etc.)
+- **Rationale**: Native IDE tools provide better integration, allow the system to track changes, and enable features like diagnostics and validation
+
+**Step 4: Implement with Test-Driven Development**
+- **MUST write tests first** (or alongside code):
+  - Unit tests for business logic
+  - Integration tests for component interaction
+  - Follow existing test patterns in `tests/` directory
+- **MUST follow all paradigms** defined in `.rules` and `CONTRIBUTING.md`:
+  - Clean Architecture (domain → usecases → infra → adapters)
+  - Dependency Injection (constructor injection only)
+  - Protocol-based contracts (no concrete class dependencies)
+  - Pydantic models with Field descriptions
+- **MUST implement iteratively**:
+  - Small, reviewable changes
+  - Commit after each logical unit of work
+  - Run tests and linters after each change (`ruff check .`, `ruff format .`, `pytest`)
+
+**Step 5: Document and Review**
+- **MUST update documentation** as you code:
+  - Docstrings for all public methods
+  - Update README if architecture changes
+  - Add examples for new features
+- **MUST update scratchpad** with completion status
+- **MUST run full test suite** before considering work complete
+
+### Workflow Summary (Quick Reference)
+
+```
+1. Gather Info → Read files, research, ask questions
+   ↓
+2. Document Plan → Update scratchpad with TODO list
+   ↓
+3. Pitch Approach → Describe implementation, get approval
+   ↓ (iterate 2-3 until approved)
+4. TDD Implementation → Write tests, write code, commit
+   ↓
+5. Document & Review → Update docs, run tests, mark complete
+```
+
+### Hard Rules: Code Quality
+- **MUST run `ruff check . --fix && ruff format .`** before committing
+- **MUST ensure tests pass** with `pytest` before marking work complete
+- **MUST maintain >= 80% code coverage**
+- **MUST NOT skip the approval step** even for "small" changes
+
+### Soft Rules
+- Use the assistant for boilerplate, documentation scaffolding, and generating uncontroversial code
+- Prefer iterative, reviewable code completions over large, sweeping changes
+- When in doubt, ask for design alternatives and tradeoffs before implementing
+- If a task feels too large, break it into smaller sub-tasks and get approval for each
+
+---
+
+## Usage of Coding Assistants (General Guidelines)
+
+### Hard Rules
+- Do not take generated code at face value: always review, test, and adapt outputs from the assistant.
+- Do not allow coding assistants to make high-impact, architectural changes without explicit team agreement.
+- Provide context and project-specific docs when prompting assistants (copy/paste as needed).
+
+### Soft Rules
+- Use the assistant for boilerplate, documentation scaffolding, and generating uncontroversial code.
+- Prefer iterative, reviewable code completions over large, sweeping changes from coding assistants.
+- When in doubt, ask assistants for design alternatives, tradeoffs, or smaller, safer edits instead of full implementations.
+- **Use Nix dev shell helper functions**: Leverage `update-deps`, `commit-deps`, `test-local`, and `sync-agent-rules` for common tasks.
+- After updating `.rules`, run `sync-agent-rules` to keep all agent configurations in sync across `.agent`, `.cursor`, `.zed`, etc.
+
+---
+
+## Project Organization
+
+### Hard Rules
+- **Never commit the `archive/` folder**: This folder is gitignored and used for local file storage only.
+- **Use `archive/` for local-only files**: Store experiment results, old versions, temporary research, or any files you want to keep locally but not commit.
+
+### Soft Rules
+- **Organize `archive/` by date or topic**: Use subdirectories like `archive/2024-11-03-experiment/` or `archive/old-implementations/` for better organization.
+- **Document archived decisions**: If archiving code due to an architectural decision, consider creating an ADR (Architecture Decision Record) explaining why.
+- **Clean up periodically**: The archive folder is for temporary local storage, not permanent hoarding. Clean it up occasionally.
+
+### Typical Use Cases for `archive/`
+- Old implementations before refactoring
+- Experiment results and temporary analysis
+- Alternative approaches that didn't work out
+- Draft documentation or notes
+- Local configuration variations
+- Downloaded research papers or reference materials
+
+---
+
+## Nix Development Environment
+
+### Hard Rules
+- **Bash variable syntax in flake.nix**: When writing bash code inside Nix strings, escape bash variables with `''${VAR}` not `${VAR}`
+  - Wrong: `tag="${APP_NAME:-default}"` (Nix interprets `${APP_NAME}`)
+  - Correct: `tag="''${APP_NAME:-default}"` (bash interprets `${APP_NAME}`)
+- **No spaces in bash parameter expansion**: Use `${VAR:-default}` not `${VAR: -default}`
+  - Wrong: `${VAR: -default}` (space before `-` is substring syntax)
+  - Correct: `${VAR:-default}` (no space for default value)
+- **Indirect expansions**: Use `''${!var:-default}` with proper escaping
+
+### Rationale
+Nix uses `${...}` for its own variable interpolation. Bash variables in Nix multi-line strings must be escaped with `''${...}` to prevent Nix from trying to evaluate them. This is a common source of "undefined variable" errors.
+
+---
+
+## Development Tools & Helper Functions
+
+### Nix Dev Shell Helper Functions
+
+The Nix dev shell provides several helper functions to streamline common development tasks:
+
+- **`update-deps`**: Regenerate `requirements.txt` from `requirements.in` using pip-compile
+- **`commit-deps`**: Commit dependency changes with a standardized commit message
+- **`test-local`**: Run full CI checks locally (lint + format + tests with coverage)
+- **`sync-agent-rules [source_file]`**: Create/update all agent rule files from a single source (auto-runs on shell startup)
+
+### Soft Rules for Helper Functions
+- Use `update-deps` instead of manually editing `requirements.txt`
+- Run `test-local` before pushing to catch issues early
+- **After updating `.rules`, run `sync-agent-rules` to update all agent config files** (or just restart the dev shell)
+- Use `commit-deps` for consistent dependency update commit messages
+- The sync happens automatically on dev shell startup, keeping all agents in sync
+
+### Agent Rule Files - Single Source of Truth
+
+The `sync-agent-rules` function maintains **all** agent config files from one source:
+
+**Source files checked (in order):**
+1. `.rules` (our standard - recommended)
+2. `.cursorrules`, `.windsurfrules`, `.clinerules`
+3. `.github/copilot-instructions.md`
+4. `AGENT.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`
+
+**Target files created/updated:**
+- `.agent/rules` (our documentation standard)
+- `.cursorrules` (Cursor IDE)
+- `.windsurfrules` (Windsurf)
+- `.clinerules` (Cline)
+- `.github/copilot-instructions.md` (GitHub Copilot)
+- `AGENT.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` (various agents)
+
+**Usage:**
+```bash
+# Auto-detect source and sync all (runs automatically on shell startup)
+sync-agent-rules
+
+# Explicitly specify source file
+sync-agent-rules .rules
+
+# After editing .rules, sync manually
+sync-agent-rules .rules
+```
+
+**Best Practice:** Edit `.rules` only, then run `sync-agent-rules` to propagate changes to all agents.
+
+---
+
+## Versioning
+
+### Hard Rules
+- **Never use version 1.0.0 or higher for initial releases**: Always start with 0.0.1
+- Semantic versioning format: MAJOR.MINOR.PATCH (e.g., 0.0.1, 0.1.0, 0.2.1)
+- Increment versions according to semver rules before 1.0.0 release
+
+### Soft Rules
+- Document version changes in changelog.md
+- Tag releases in git with version number
+- Consider 1.0.0 only after production deployment and stability
+
+---
+
+**End of .rules**

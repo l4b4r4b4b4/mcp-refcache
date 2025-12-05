@@ -1,0 +1,76 @@
+{
+  "$schema": "zed://schemas/settings",
+  "terminal": {
+    "env": {
+      "PYTHONPATH": "./apps/api:./apps/api/src"
+    }
+  },
+  "lsp": {
+    "pyright": {
+      "settings": {
+        "python.pythonPath": "apps/api/.venv/bin/python",
+        "python.analysis": {
+          "extraPaths": ["apps/api/src"],
+          "diagnosticMode": "workspace",
+          "typeCheckingMode": "strict"
+        }
+      }
+    },
+    "typescript-language-server": {
+      "settings": {
+        "typescript.preferences.importModuleSpecifier": "non-relative"
+      }
+    }
+  },
+  "languages": {
+    "Python": {
+      "format_on_save": {
+        "external": {
+          "command": "ruff",
+          "arguments": ["format", "-"]
+        }
+      },
+      "language_servers": ["pyright"]
+    },
+    "TypeScript": {
+      "format_on_save": "on",
+      "tab_size": 2
+    },
+    "TSX": {
+      "format_on_save": "on",
+      "tab_size": 2
+    }
+  },
+  "context_servers": {
+    "bundesmcp": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/home/lukes/code/AIS/BundesMCP",
+        "python",
+        "-m",
+        "src.main"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONPATH": "/home/lukes/code/AIS/BundesMCP/src"
+      }
+    },
+    "nixos": {
+      "command": "uvx",
+      "args": ["mcp-nixos"]
+    },
+    "sqlite": {
+      "command": "uvx",
+      "args": ["mcp-sqlite", "./data/docproc.db"]
+    }
+    // "osm": {
+    //   "command": "uvx",
+    //   "args": ["osm-mcp-server"],
+    //   "env": {
+    //     "SSL_CERT_FILE": "/etc/ssl/certs/ca-bundle.crt"
+    //   }
+    // }
+  }
+}
