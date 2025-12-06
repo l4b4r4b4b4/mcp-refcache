@@ -524,39 +524,159 @@ This could leak information about whether a reference exists.
 - Async functions properly resolve refs before execution
 - No information leakage about ref existence vs permission denial
 
+### Live Testing Results (Session 3)
+
+Tested with `max_size=64` tokens:
+
+| Test | Result |
+|------|--------|
+| Sample strategy (no page) | ✅ Returns evenly-spaced sample |
+| Paginate strategy (with page=2) | ✅ Auto-switches, returns items 10-19 |
+| Page 5 content | ✅ Items 40-49 correct |
+| Opaque errors (fake ref_id) | ✅ Generic message, no info leak |
+| Matrix pagination | ✅ Nested structures work |
+
+---
+
+## Session 4: Hierarchical max_size Feature (Planned)
+
+### Problem Statement
+
+Currently, `max_size` is only configurable at the server level via `PreviewConfig`. This is inflexible because:
+
+1. Some tools produce larger outputs that need bigger previews
+2. Some calls may need custom sizes based on context
+3. No way to override at runtime without reconfiguring the cache
+
+### Proposed Solution: Three-Level max_size Hierarchy
+
+**Priority (highest to lowest):**
+1. **Per-call** - Passed to `get_cached_result(ref_id, max_size=200)` or in tool kwargs
+2. **Per-tool** - Configured in `@cache.cached(max_size=500)`
+3. **Server default** - `PreviewConfig(max_size=1024)` (fallback)
+
+### Implementation Plan
+
+#### Phase 1: Per-tool max_size in @cache.cached()
+
+**Files to modify:**
+- `src/mcp_refcache/cache.py` - Add `max_size` parameter to `cached()` decorator
+
+**Changes:**
+```python
+@cache.cached(max_size=500)  # Tool-specific limit
+async def generate_large_data(...):
+    ...
+```
+
+**Implementation:**
+1. Add `max_size: int | None = None` to `cached()` signature
+2. Store on wrapper function for later use
+3. Pass to `_build_response()` when generating preview
+
+#### Phase 2: Per-call max_size in get_cached_result
+
+**Files to modify:**
+- `examples/mcp_server.py` - Add `max_size` parameter to `get_cached_result`
+- `src/mcp_refcache/cache.py` - Add `max_size` to `get()` method
+
+**Changes:**
+```python
+get_cached_result(ref_id, page=2, max_size=100)  # Per-call override
+```
+
+**Implementation:**
+1. Add `max_size: int | None = None` to `RefCache.get()`
+2. If provided, use it instead of `self.preview_config.max_size`
+3. Add to `get_cached_result` tool signature
+
+#### Phase 3: Resolution Logic
+
+**Priority resolution in `_create_preview()`:**
+```python
+def _create_preview(self, value, page=None, page_size=None, max_size=None):
+    # Use provided max_size or fall back to config
+    effective_max_size = max_size or self.preview_config.max_size
+    ...
+```
+
+### API Design
+
+```python
+# Level 1: Server default (lowest priority)
+cache = RefCache(
+    preview_config=PreviewConfig(max_size=1024)
+)
+
+# Level 2: Tool-specific (medium priority)
+@cache.cached(max_size=500)
+async def generate_sequence(...):
+    ...
+
+# Level 3: Per-call (highest priority)
+response = cache.get(ref_id, max_size=100)
+# Or via tool:
+get_cached_result(ref_id, max_size=100)
+```
+
+### Test Cases
+
+1. `test_per_call_max_size_overrides_default`
+2. `test_per_tool_max_size_overrides_default`
+3. `test_per_call_overrides_per_tool`
+4. `test_no_override_uses_server_default`
+5. `test_max_size_affects_preview_size`
+
+### Estimated Effort
+
+- Phase 1 (per-tool): ~30 minutes
+- Phase 2 (per-call): ~30 minutes  
+- Phase 3 (integration + tests): ~30 minutes
+- Total: ~1.5 hours
+
 ---
 
 ## Next Session Starting Prompt
 
-\`\`\`
-Continue mcp-refcache: Medium Priority Polish Tasks
+```
+Continue mcp-refcache: Hierarchical max_size Feature
 
 ## Context
-- All high priority tasks complete (circular ref detection, opaque errors)
-- 445 tests passing
-- See \`.agent/scratchpad-decorator-refactor.md\` for full context
+- Sessions 1-3 complete, 459 tests passing
+- Pagination auto-switch implemented and tested
+- See `.agent/scratchpad-decorator-refactor.md` for full context
 
-## What Was Done (Session 2)
-- Added circular reference detection with immediate cycle detection
-- Implemented opaque error messages for security (KeyError/PermissionError → same message)
-- Fixed return type annotation for FastMCP compatibility
-- Live tested all decorator features with Zed/Claude
+## What Was Done (Session 3)
+- Implemented pagination auto-switch (SampleGenerator → PaginateGenerator when page specified)
+- Added 7 async ref resolution tests
+- Unified opaque error messages in get_cached_result
+- Live tested all features with Zed/Claude
 
-## Current Tasks (Medium Priority)
+## Current Task: Hierarchical max_size
 
-1. **Pagination UX** - The \`sample\` strategy doesn't respond to page params
-   - Consider auto-switching to \`paginate\` when page is specified
-   - Or document current behavior more clearly in tool responses
+Implement three-level max_size priority:
+1. **Per-call** (highest) - `get_cached_result(ref_id, max_size=100)`
+2. **Per-tool** (medium) - `@cache.cached(max_size=500)`
+3. **Server default** (lowest) - `PreviewConfig(max_size=1024)`
 
-2. **Async ref resolution tests** - Current tests are sync only
-   - Add async function tests for resolution
+### Implementation Phases
 
-3. **(Optional) Opaque errors in MCP tool handlers**
-   - \`get_cached_result\` tool still shows "Permission denied" vs "Not found"
-   - Consider unifying error messages at the tool level too
+**Phase 1: Per-tool max_size in @cache.cached()**
+- Add `max_size: int | None = None` to `cached()` decorator
+- Pass to `_build_response()` when generating preview
+
+**Phase 2: Per-call max_size**
+- Add `max_size` param to `RefCache.get()` and `_create_preview()`
+- Add to `get_cached_result` tool in example server
+
+**Phase 3: Tests**
+- test_per_call_max_size_overrides_default
+- test_per_tool_max_size_overrides_default
+- test_per_call_overrides_per_tool
+- test_no_override_uses_server_default
 
 ## Guidelines
-- Follow \`.rules\` (TDD, document as you go)
-- Run \`uv run ruff check . --fix && uv run ruff format .\`
-- Run \`uv run pytest tests/\` before considering complete
-\`\`\`
+- Follow `.rules` (TDD, document as you go)
+- Run `uv run ruff check . --fix && uv run ruff format .`
+- Run `uv run pytest tests/` before considering complete
+```
