@@ -20,6 +20,7 @@ mcp-refcache is a reference-based caching library for FastMCP servers that provi
   - [Namespaces](concepts/namespaces.md)
   - [Permissions](concepts/permissions.md)
   - [Private Computation](concepts/private-computation.md)
+- [Rules Template for AI Assistants](rules-template.md)
 - [Contributing](../CONTRIBUTING.md)
 - [Changelog](../CHANGELOG.md)
 

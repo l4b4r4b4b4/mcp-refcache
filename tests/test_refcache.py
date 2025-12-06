@@ -450,8 +450,16 @@ class TestRefCacheDecorator:
         result1 = expensive_function(5)
         result2 = expensive_function(5)
 
-        assert result1 == 10
-        assert result2 == 10
+        # Now returns structured response
+        assert isinstance(result1, dict)
+        assert "ref_id" in result1
+        assert result1["value"] == 10
+        assert result1["is_complete"] is True
+
+        assert isinstance(result2, dict)
+        assert result2["value"] == 10
+        assert result2["ref_id"] == result1["ref_id"]  # Same ref_id for cached
+
         assert call_count == 1  # Only called once
 
     def test_cached_decorator_different_args(self, cache: RefCache) -> None:
@@ -467,8 +475,10 @@ class TestRefCacheDecorator:
         result1 = expensive_function(5)
         result2 = expensive_function(10)
 
-        assert result1 == 10
-        assert result2 == 20
+        # Now returns structured response
+        assert result1["value"] == 10
+        assert result2["value"] == 20
+        assert result1["ref_id"] != result2["ref_id"]  # Different ref_ids
         assert call_count == 2
 
     def test_cached_decorator_with_namespace(self, cache: RefCache) -> None:
@@ -532,9 +542,127 @@ class TestRefCacheDecorator:
         result1 = asyncio.run(async_function(5))
         result2 = asyncio.run(async_function(5))
 
-        assert result1 == 10
-        assert result2 == 10
+        # Now returns structured response
+        assert isinstance(result1, dict)
+        assert result1["value"] == 10
+        assert result1["is_complete"] is True
+
+        assert isinstance(result2, dict)
+        assert result2["value"] == 10
+        assert result2["ref_id"] == result1["ref_id"]  # Same cached ref
+
         assert call_count == 1
+
+
+class TestRefCacheDecoratorRefResolution:
+    """Tests for ref_id resolution in decorator inputs."""
+
+    @pytest.fixture
+    def cache(self) -> RefCache:
+        """Create a fresh RefCache for testing."""
+        return RefCache(name="test-cache")
+
+    def test_cached_resolves_ref_in_kwarg(self, cache: RefCache) -> None:
+        """Test that ref_id in kwargs is resolved before function execution."""
+        # Store a value to be referenced
+        ref = cache.set("multiplier", 2.5)
+
+        @cache.cached()
+        def multiply(value: int, factor: float) -> float:
+            return value * factor
+
+        # Call with ref_id instead of actual value
+        result = multiply(value=10, factor=ref.ref_id)
+
+        # The function should receive resolved value
+        assert result["value"] == 25.0
+        assert result["is_complete"] is True
+
+    def test_cached_resolves_ref_in_positional_arg(self, cache: RefCache) -> None:
+        """Test that ref_id in positional args is resolved."""
+        ref = cache.set("data", [1, 2, 3])
+
+        @cache.cached()
+        def sum_list(numbers: list[int]) -> int:
+            return sum(numbers)
+
+        result = sum_list(ref.ref_id)
+
+        assert result["value"] == 6
+
+    def test_cached_resolves_nested_ref_in_dict(self, cache: RefCache) -> None:
+        """Test that ref_id nested in dict is resolved."""
+        ref = cache.set("prices", [100, 200, 300])
+
+        @cache.cached()
+        def process(data: dict) -> int:
+            return sum(data["prices"])
+
+        result = process(data={"prices": ref.ref_id, "name": "test"})
+
+        assert result["value"] == 600
+
+    def test_cached_resolves_multiple_refs(self, cache: RefCache) -> None:
+        """Test that multiple ref_ids are all resolved."""
+        ref1 = cache.set("a", 10)
+        ref2 = cache.set("b", 20)
+
+        @cache.cached()
+        def add(x: int, y: int) -> int:
+            return x + y
+
+        result = add(x=ref1.ref_id, y=ref2.ref_id)
+
+        assert result["value"] == 30
+
+    def test_cached_resolves_ref_in_list(self, cache: RefCache) -> None:
+        """Test that ref_id inside a list is resolved."""
+        ref = cache.set("item", 999)
+
+        @cache.cached()
+        def first_item(items: list) -> int:
+            return items[0]
+
+        result = first_item(items=[ref.ref_id, 2, 3])
+
+        assert result["value"] == 999
+
+    def test_cached_mixed_refs_and_values(self, cache: RefCache) -> None:
+        """Test mixed ref_ids and direct values."""
+        ref = cache.set("factor", 2.0)
+
+        @cache.cached()
+        def compute(data: list[int], factor: float, name: str) -> dict:
+            return {"sum": sum(data) * factor, "name": name}
+
+        result = compute(data=[1, 2, 3], factor=ref.ref_id, name="test")
+
+        assert result["value"] == {"sum": 12.0, "name": "test"}
+
+    def test_cached_no_refs_works_normally(self, cache: RefCache) -> None:
+        """Test that functions without refs work normally."""
+
+        @cache.cached()
+        def simple(x: int) -> int:
+            return x * 2
+
+        result = simple(x=5)
+
+        assert result["value"] == 10
+        assert result["is_complete"] is True
+
+    def test_cached_resolve_refs_disabled(self, cache: RefCache) -> None:
+        """Test that resolve_refs=False skips resolution."""
+        ref = cache.set("data", 42)
+
+        @cache.cached(resolve_refs=False)
+        def echo(value: str) -> str:
+            return value
+
+        # Should NOT resolve - returns the ref_id string as-is
+        result = echo(value=ref.ref_id)
+
+        assert result["value"] == ref.ref_id  # Unchanged
 
 
 class TestRefCacheNamespaces:

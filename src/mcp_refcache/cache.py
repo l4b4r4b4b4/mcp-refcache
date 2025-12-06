@@ -9,6 +9,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import inspect
+import json
 import time
 from collections.abc import Callable  # noqa: TC003 - used at runtime in type hints
 from typing import Any, ParamSpec, TypeVar
@@ -38,6 +39,7 @@ from mcp_refcache.preview import (
     PreviewResult,
     get_default_generator,
 )
+from mcp_refcache.resolution import resolve_args_and_kwargs
 
 # Type variables for decorator
 P = ParamSpec("P")
@@ -427,49 +429,161 @@ class RefCache:
         namespace: str = "public",
         policy: AccessPolicy | None = None,
         ttl: float | None = None,
+        max_size: int | None = None,
+        resolve_refs: bool = True,
+        actor: str = "agent",
     ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-        """Decorator to cache function results.
+        """Decorator to cache function results and return structured responses.
+
+        This decorator provides full MCP tool integration:
+        1. **Pre-execution**: Resolves any ref_ids in inputs (deep recursive)
+        2. **Post-execution**: Caches result and returns structured response
+
+        The response is ALWAYS a structured dict containing:
+        - Small results: Full value + ref_id + metadata (is_complete=True)
+        - Large results: Preview + ref_id + pagination info (is_complete=False)
 
         Args:
             namespace: Namespace for cached results.
             policy: Access policy for cached results.
             ttl: TTL for cached results.
+            max_size: Maximum size (tokens/chars) before auto-preview.
+                If None, uses cache's preview_config.max_size.
+            resolve_refs: If True (default), resolve ref_ids in inputs before
+                executing the function. Any parameter value matching the ref_id
+                pattern will be hot-swapped with the cached value.
+            actor: Actor identity for permission checks when resolving refs.
 
         Returns:
-            A decorator that caches function results.
+            A decorator that wraps functions with caching and structured responses.
 
         Example:
             ```python
-            @cache.cached(namespace="session:abc")
-            def expensive_computation(x: int) -> int:
-                return x * 2
+            @mcp.tool
+            @cache.cached(namespace="data")
+            def generate_data(size: int) -> list[int]:
+                return list(range(size))
 
-            result = expensive_computation(5)  # Computed
-            result = expensive_computation(5)  # From cache
+            # Small result - returns full value:
+            # {"ref_id": "...", "value": [0, 1, 2], "is_complete": True, ...}
+
+            # Large result - returns preview:
+            # {"ref_id": "...", "preview": [0, 50, 100, ...], "is_complete": False, ...}
+
+            # Ref_id resolution - agent can pass refs from previous tools:
+            @mcp.tool
+            @cache.cached(namespace="results")
+            def process_data(data: list[int], factor: float) -> list[float]:
+                return [x * factor for x in data]
+
+            # Agent calls: process_data(data="myapp:abc123", factor=2.0)
+            # Decorator resolves "myapp:abc123" to actual list before execution
             ```
         """
+        effective_max_size = max_size or self.preview_config.max_size
 
-        def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        def decorator(func: Callable[P, R]) -> Callable[P, dict[str, Any]]:
             is_async = inspect.iscoroutinefunction(func)
+
+            # Inject cache documentation into docstring
+            original_doc = func.__doc__ or ""
+            cache_doc = """
+
+**Caching Behavior:**
+- Any input parameter can accept a ref_id from a previous tool call
+- Large results return ref_id + preview; use get_cached_result to paginate
+- All responses include ref_id for future reference
+"""
+            func.__doc__ = original_doc + cache_doc
+
+            def _resolve_inputs(
+                args: tuple[Any, ...], kwargs: dict[str, Any]
+            ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+                """Resolve any ref_ids in args and kwargs."""
+                if not resolve_refs:
+                    return args, kwargs
+
+                args_result, kwargs_result = resolve_args_and_kwargs(
+                    self,
+                    args,
+                    kwargs,
+                    actor=actor,
+                    fail_on_missing=True,
+                )
+
+                return args_result.value, kwargs_result.value
+
+            def _measure_size(value: Any) -> int:
+                """Measure the size of a value using the cache's measurer."""
+                try:
+                    serialized = json.dumps(value, default=str)
+                    return self._measurer.measure(serialized)
+                except (TypeError, ValueError):
+                    # Fallback: estimate based on string representation
+                    return self._measurer.measure(str(value))
+
+            def _build_response(ref_id: str, value: Any) -> dict[str, Any]:
+                """Build structured response based on value size."""
+                value_size = _measure_size(value)
+                is_complete = value_size <= effective_max_size
+
+                if is_complete:
+                    # Small result: include full value
+                    return {
+                        "ref_id": ref_id,
+                        "value": value,
+                        "is_complete": True,
+                        "size": value_size,
+                        "total_items": self._count_items(value),
+                    }
+                else:
+                    # Large result: include preview only
+                    response = self.get(ref_id)
+                    result: dict[str, Any] = {
+                        "ref_id": ref_id,
+                        "preview": response.preview,
+                        "is_complete": False,
+                        "preview_strategy": response.preview_strategy.value,
+                        "total_items": response.total_items,
+                        "original_size": response.original_size,
+                        "preview_size": response.preview_size,
+                    }
+                    if response.page is not None:
+                        result["page"] = response.page
+                        result["total_pages"] = response.total_pages
+                    result["message"] = (
+                        f"Use get_cached_result(ref_id='{ref_id}') to paginate."
+                    )
+                    return result
 
             if is_async:
 
                 @functools.wraps(func)
-                async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-                    cache_key = self._make_cache_key(func, args, kwargs)
+                async def async_wrapper(
+                    *args: P.args, **kwargs: P.kwargs
+                ) -> dict[str, Any]:
+                    # Step 1: Resolve any ref_ids in inputs
+                    resolved_args, resolved_kwargs = _resolve_inputs(args, kwargs)
 
-                    # Check if already cached
+                    # Step 2: Generate cache key from RESOLVED inputs
+                    cache_key = self._make_cache_key(
+                        func, resolved_args, resolved_kwargs
+                    )
+
+                    # Step 3: Check if already cached
                     namespaced_key = self._make_namespaced_key(cache_key, namespace)
                     if namespaced_key in self._key_to_ref:
                         ref_id = self._key_to_ref[namespaced_key]
                         if self._backend.exists(ref_id):
                             entry = self._backend.get(ref_id)
                             if entry is not None:
-                                return entry.value
+                                return _build_response(ref_id, entry.value)
 
-                    # Execute and cache
-                    result = await func(*args, **kwargs)
-                    self.set(
+                    # Step 4: Execute function with resolved inputs
+                    result = await func(*resolved_args, **resolved_kwargs)
+
+                    # Step 5: Cache the result
+                    ref = self.set(
                         cache_key,
                         result,
                         namespace=namespace,
@@ -477,27 +591,42 @@ class RefCache:
                         ttl=ttl,
                         tool_name=func.__name__,
                     )
-                    return result
 
+                    # Step 6: Return structured response
+                    return _build_response(ref.ref_id, result)
+
+                # Update return annotation for FastMCP schema generation
+                async_wrapper.__annotations__ = {
+                    **func.__annotations__,
+                    "return": dict[str, Any],
+                }
                 return async_wrapper  # type: ignore
             else:
 
                 @functools.wraps(func)
-                def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-                    cache_key = self._make_cache_key(func, args, kwargs)
+                def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> dict[str, Any]:
+                    # Step 1: Resolve any ref_ids in inputs
+                    resolved_args, resolved_kwargs = _resolve_inputs(args, kwargs)
 
-                    # Check if already cached
+                    # Step 2: Generate cache key from RESOLVED inputs
+                    cache_key = self._make_cache_key(
+                        func, resolved_args, resolved_kwargs
+                    )
+
+                    # Step 3: Check if already cached
                     namespaced_key = self._make_namespaced_key(cache_key, namespace)
                     if namespaced_key in self._key_to_ref:
                         ref_id = self._key_to_ref[namespaced_key]
                         if self._backend.exists(ref_id):
                             entry = self._backend.get(ref_id)
                             if entry is not None:
-                                return entry.value
+                                return _build_response(ref_id, entry.value)
 
-                    # Execute and cache
-                    result = func(*args, **kwargs)
-                    self.set(
+                    # Step 4: Execute function with resolved inputs
+                    result = func(*resolved_args, **resolved_kwargs)
+
+                    # Step 5: Cache the result
+                    ref = self.set(
                         cache_key,
                         result,
                         namespace=namespace,
@@ -505,8 +634,15 @@ class RefCache:
                         ttl=ttl,
                         tool_name=func.__name__,
                     )
-                    return result
 
+                    # Step 6: Return structured response
+                    return _build_response(ref.ref_id, result)
+
+                # Update return annotation for FastMCP schema generation
+                sync_wrapper.__annotations__ = {
+                    **func.__annotations__,
+                    "return": dict[str, Any],
+                }
                 return sync_wrapper  # type: ignore
 
         return decorator

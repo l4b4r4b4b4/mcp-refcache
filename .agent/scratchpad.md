@@ -1,5 +1,138 @@
 # mcp-refcache Development Scratchpad
 
+## Current Status: FastMCP Integration Example COMPLETE ✅
+
+**Session Date**: 2024-XX-XX (Priority 1 Task)
+
+### What Was Accomplished This Session
+
+1. **Created `examples/mcp_server.py`** - Complete Scientific Calculator MCP server (~890 lines)
+   - 7 tools: calculate, generate_sequence, matrix_operation, store_secret, compute_with_secret, get_cached_result, list_cache_stats
+   - Demonstrates all RefCache features: caching, previews, pagination, access control, private computation
+   - Supports both stdio (Claude Desktop) and SSE (web/debug) transports
+   - Both sync and async tool implementations
+
+2. **Created `examples/README.md`** - Comprehensive documentation
+   - Prerequisites and installation
+   - Running instructions (stdio and SSE modes)
+   - Claude Desktop configuration JSON
+   - Example prompts to try
+   - Architecture diagram
+   - Troubleshooting section
+
+3. **Created `tests/test_examples.py`** - 15 tests for examples
+   - Import verification
+   - RefCache integration tests
+   - Calculator logic tests (math context, expression validation)
+   - Sequence and matrix operation tests
+   - All tests pass (389 total, 8 skipped)
+
+4. **Created `src/mcp_refcache/fastmcp/` module** - Instruction helpers
+   - `instructions.py` - Comprehensive cache-aware instruction generators
+   - Covers: Response Types, Pagination, Reference Passing, Admin-only Cache Management
+   - Functions: `cache_instructions()`, `cached_tool_description()`, `cache_guide_prompt()`, `with_cache_docs()` decorator
+   - Ready for integration into MCP tools
+
+5. **Added FastMCP as git submodule** at `.external/fastmcp`
+   - Full source available for reference
+   - Helps align caching library with FastMCP patterns
+
+### Files Created/Modified
+- `examples/mcp_server.py` (NEW) - Scientific Calculator MCP
+- `examples/README.md` (NEW) - Example documentation
+- `tests/test_examples.py` (NEW) - Example tests
+- `src/mcp_refcache/fastmcp/__init__.py` (NEW) - FastMCP integration module
+- `src/mcp_refcache/fastmcp/instructions.py` (NEW) - Instruction generators
+- `.external/fastmcp/` (NEW) - FastMCP submodule
+- `.agent/tmp/` - Copied reference toolsets from fractal-agents
+
+### Test Results
+```
+389 passed, 8 skipped in 0.33s
+```
+All linting passes. Coverage at 89%.
+
+---
+
+## Next Session: Priority Tasks
+
+### Priority 1: Update Example to Use Instruction Helpers
+The example `mcp_server.py` still uses manual instructions. Update to use:
+```python
+from mcp_refcache.fastmcp import cache_instructions, with_cache_docs
+
+mcp = FastMCP(
+    name="Scientific Calculator",
+    instructions=cache_instructions(),  # Use helper
+)
+
+@mcp.tool
+@with_cache_docs(returns_reference=True, supports_pagination=True)
+async def generate_sequence(...):
+    ...
+```
+
+### Priority 2: Add to Zed Settings for Live Testing
+Add calculator MCP to `.zed/settings.json`:
+```json
+"context_servers": {
+    "calculator": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/mcp-refcache", "python", "examples/mcp_server.py"]
+    }
+}
+```
+
+### Priority 3: Create Cache Admin Toolset (Separate, Restricted)
+Create `src/mcp_refcache/fastmcp/admin_tools.py`:
+- `list_caches()` - Admin only
+- `list_references()` - Admin only  
+- `get_cache_stats()` - Admin only
+- `clear_cache()` - Admin only
+- Permission-gated to prevent agent access
+
+### Priority 4: LangGraph Test Harness (Optional)
+Create a LangGraph React agent that uses the calculator MCP for automated testing.
+
+### Priority 5: Separate MCP Repos
+For production MCPs (FinQuant, BundesMCP, etc.), create separate repos that:
+- `pip install mcp-refcache`
+- Import and configure RefCache
+- Have their own CI/CD
+
+---
+
+## Key Insights from This Session
+
+### FastMCP Tool Description Flow
+1. `@mcp.tool(description="...")` - Explicit description takes precedence
+2. Docstring via `inspect.getdoc(fn)` - Used if no explicit description
+3. Both are exposed to LLM during MCP discovery
+
+### Instruction Injection Levels
+| Level | Mechanism | Use For |
+|-------|-----------|---------|
+| Server | `FastMCP(instructions=...)` | Overall caching behavior |
+| Tool | Docstring or `description=` | Per-tool cache hints |
+| Prompt | `@mcp.prompt` | Detailed cache guide |
+| Response | `available_actions` field | Dynamic hints |
+
+### Cache Admin Security
+- Cache management tools MUST be admin-only
+- Never expose `clear_cache`, `delete_reference` to agents
+- Use separate server or permission gating
+
+---
+
+## Reference: Files in `.agent/tmp/`
+Copied from fractal-agents for reference:
+- `math_toolset.py` - Full math MCP with caching
+- `time_toolset.py` - Time tools example
+- `cache_toolset.py` - Cache management tools
+- `crypto_toolset.py`, `geo_toolset.py`, `weather_toolset.py` - Other examples
+
+---
+
 ## Project Overview
 
 Reference-based caching library for FastMCP servers. Enables:
@@ -533,6 +666,47 @@ See bottom of this file for the codebox prompt to continue development.
 
 ## Next Session Starting Prompt
 
+### CURRENT PROMPT (Use This):
+
+\`\`\`
+Continue mcp-refcache: FastMCP Integration Polish & Live Testing
+
+## Context
+- Phase 1-5 complete: RefCache fully functional with access control
+- 389 tests, 89% coverage
+- See `.agent/scratchpad.md` for full context
+
+## What Was Done Last Session
+1. Created `examples/mcp_server.py` - Scientific Calculator MCP (complete, working)
+2. Created `examples/README.md` - Documentation
+3. Created `tests/test_examples.py` - 15 tests, all passing
+4. Created `src/mcp_refcache/fastmcp/` module - Instruction helpers
+5. Added FastMCP as submodule at `.external/fastmcp`
+
+## Current Task: Polish & Test
+
+### Task 1: Update Example to Use Instruction Helpers
+Update `examples/mcp_server.py` to use the new helpers:
+- Replace manual instructions with `cache_instructions()`
+- Add `@with_cache_docs()` decorator to tools
+- Register `cache_guide_prompt` as a prompt
+
+### Task 2: Add Calculator to Zed Settings
+Add to `.zed/settings.json` for live testing in this chat.
+
+### Task 3: Create Admin Tools Module (Optional)
+Create `src/mcp_refcache/fastmcp/admin_tools.py` with permission-gated cache management.
+
+### Guidelines
+- Follow `.rules` (TDD, document as you go)
+- FastMCP is optional dependency - handle import gracefully
+- Keep admin tools separate and restricted
+\`\`\`
+
+---
+
+## Previous Session Starting Prompt
+
 Use the codebox below to continue in a new chat session:
 
 ```
@@ -587,4 +761,4 @@ Create a working MCP server demo that showcases RefCache capabilities.
 - Follow `.rules` (TDD, protocol-based contracts)
 - Maintain 80%+ coverage
 ```
-~~~
+~~~key="

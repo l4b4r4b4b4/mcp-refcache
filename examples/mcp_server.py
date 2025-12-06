@@ -75,7 +75,6 @@ from mcp_refcache import (
     PreviewConfig,
     PreviewStrategy,
     RefCache,
-    SizeMode,
 )
 from mcp_refcache.fastmcp import (
     cache_guide_prompt,
@@ -113,12 +112,12 @@ Admin tools (restricted):
 # =============================================================================
 
 # Create a RefCache instance with sensible defaults for the calculator
+# Uses token-based sizing (default) for accurate LLM context management
 cache = RefCache(
     name="calculator",
     default_ttl=3600,  # 1 hour TTL
     preview_config=PreviewConfig(
-        size_mode=SizeMode.CHARACTER,  # Use characters (simpler, no tokenizer needed)
-        max_size=500,  # Max 500 characters in previews
+        max_size=1024,  # Max 1024 tokens in previews
         default_strategy=PreviewStrategy.SAMPLE,  # Sample large collections
     ),
 )
@@ -389,14 +388,13 @@ def calculate(expression: str) -> dict[str, Any]:
 
 
 @mcp.tool
-@with_cache_docs(returns_reference=True, supports_pagination=True)
+@cache.cached(namespace="sequences")
 async def generate_sequence(
     sequence_type: str,
     count: int = 20,
     start: int | None = None,
     step: int | None = None,
-    ctx: Context | None = None,
-) -> dict[str, Any]:
+) -> list[int | float]:
     """Generate a mathematical sequence.
 
     Sequence types:
@@ -409,6 +407,11 @@ async def generate_sequence(
 
     For large sequences, returns a reference with a preview.
     Use get_cached_result to paginate through the full sequence.
+
+
+    **Caching:** Large results are returned as references with previews.
+
+    **Pagination:** Use `page` and `page_size` to navigate results.
     """
     # Validate input
     validated = SequenceInput(
@@ -417,11 +420,6 @@ async def generate_sequence(
         start=start,
         step=step,
     )
-
-    if ctx:
-        await ctx.info(
-            f"Generating {validated.count} {validated.sequence_type.value} numbers..."
-        )
 
     # Generate the sequence
     sequence: list[int | float] = []
@@ -466,39 +464,18 @@ async def generate_sequence(
         for n in range(validated.count):
             sequence.append(math.factorial(n))
 
-    # Cache the result
-    ref = cache.set(
-        key=f"seq_{validated.sequence_type.value}_{validated.count}",
-        value=sequence,
-        namespace="public",
-        tool_name="generate_sequence",
-    )
-
-    # Get preview
-    response = cache.get(ref.ref_id)
-
-    if ctx:
-        await ctx.info(f"Generated {len(sequence)} numbers, cached as {ref.ref_id}")
-
-    return {
-        "ref_id": ref.ref_id,
-        "sequence_type": validated.sequence_type.value,
-        "total_items": len(sequence),
-        "preview": response.preview,
-        "preview_strategy": response.preview_strategy.value,
-        "message": f"Generated {len(sequence)} {validated.sequence_type.value} numbers. Use get_cached_result to paginate.",
-    }
+    # Return raw sequence - decorator handles caching and structured response
+    return sequence
 
 
 @mcp.tool
-@with_cache_docs(returns_reference=True)
+@cache.cached(namespace="matrices")
 async def matrix_operation(
-    matrix_a: list[list[float]],
+    matrix_a: list[list[float]] | str,
     operation: str = "transpose",
-    matrix_b: list[list[float]] | None = None,
+    matrix_b: list[list[float]] | str | None = None,
     scalar: float | None = None,
-    ctx: Context | None = None,
-) -> dict[str, Any]:
+) -> list[list[float]] | float:
     """Perform matrix operations.
 
     Operations:
@@ -510,15 +487,16 @@ async def matrix_operation(
         - scalar_multiply: Multiply by scalar (requires scalar)
         - trace: Sum of diagonal elements (square matrices only)
 
-    Large results are cached and returned as references with previews.
-    """
-    # Validate inputs
-    validated_a = MatrixInput(data=matrix_a)
-    validated_op = MatrixOperation(operation)
 
-    if ctx:
-        rows, cols = len(validated_a.data), len(validated_a.data[0])
-        await ctx.info(f"Performing {operation} on {rows}x{cols} matrix...")
+    **Caching:** Large results are returned as references with previews.
+
+    **References:** This tool accepts `ref_id` from previous tool calls.
+
+    **Private Compute:** Values are processed server-side without exposure.
+    """
+    # Validate inputs (ref_ids are resolved by decorator before we get here)
+    validated_a = MatrixInput(data=matrix_a)  # type: ignore[arg-type]
+    validated_op = MatrixOperation(operation)
 
     # Convert to numpy-like operations (pure Python for simplicity)
     a = validated_a.data
@@ -555,7 +533,7 @@ async def matrix_operation(
     elif validated_op == MatrixOperation.ADD:
         if matrix_b is None:
             raise ValueError("add requires matrix_b")
-        validated_b = MatrixInput(data=matrix_b)
+        validated_b = MatrixInput(data=matrix_b)  # type: ignore[arg-type]
         b = validated_b.data
         if len(a) != len(b) or len(a[0]) != len(b[0]):
             raise ValueError("Matrices must have the same dimensions for addition")
@@ -564,7 +542,7 @@ async def matrix_operation(
     elif validated_op == MatrixOperation.MULTIPLY:
         if matrix_b is None:
             raise ValueError("multiply requires matrix_b")
-        validated_b = MatrixInput(data=matrix_b)
+        validated_b = MatrixInput(data=matrix_b)  # type: ignore[arg-type]
         b = validated_b.data
         if len(a[0]) != len(b):
             raise ValueError(
@@ -588,31 +566,8 @@ async def matrix_operation(
             [-a[1][0] / det, a[0][0] / det],
         ]
 
-    # For scalar results, return directly
-    if isinstance(result, (int, float)):
-        return {
-            "operation": operation,
-            "result": result,
-            "type": "scalar",
-        }
-
-    # For matrix results, cache them
-    ref = cache.set(
-        key=f"matrix_{operation}_{id(a)}",
-        value=result,
-        namespace="public",
-        tool_name="matrix_operation",
-    )
-
-    response = cache.get(ref.ref_id)
-
-    return {
-        "ref_id": ref.ref_id,
-        "operation": operation,
-        "result_shape": f"{len(result)}x{len(result[0])}",
-        "preview": response.preview,
-        "message": "Matrix result cached. Use get_cached_result for full data.",
-    }
+    # Return raw result - decorator handles caching and structured response
+    return result
 
 
 @mcp.tool
@@ -665,6 +620,13 @@ def compute_with_secret(secret_ref: str, expression: str) -> dict[str, Any]:
         - "x * 2" - Double the secret
         - "x ** 2 + 1" - Square the secret and add 1
         - "sin(x)" - Sine of the secret
+
+
+    **Caching:** Large results are returned as references with previews.
+
+    **References:** This tool accepts `ref_id` from previous tool calls.
+
+    **Private Compute:** Values are processed server-side without exposure.
     """
     validated = SecretComputeInput(secret_ref=secret_ref, expression=expression)
 
@@ -719,6 +681,13 @@ async def get_cached_result(
     Pagination:
         - page: Page number (1-indexed)
         - page_size: Items per page (default varies by data type)
+
+
+    **Caching:** Large results are returned as references with previews.
+
+    **Pagination:** Use `page` and `page_size` to navigate results.
+
+    **References:** This tool accepts `ref_id` from previous tool calls.
     """
     validated = CacheQueryInput(ref_id=ref_id, page=page, page_size=page_size)
 

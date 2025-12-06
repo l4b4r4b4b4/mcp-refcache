@@ -63,6 +63,14 @@ from mcp_refcache.preview import (
     TruncateGenerator,
     get_default_generator,
 )
+from mcp_refcache.resolution import (
+    RefResolver,
+    ResolutionResult,
+    is_ref_id,
+    resolve_args_and_kwargs,
+    resolve_kwargs,
+    resolve_refs,
+)
 
 __version__ = "0.0.1"
 
@@ -98,6 +106,8 @@ __all__ = [
     "PreviewResult",
     "PreviewStrategy",
     "RefCache",
+    "RefResolver",
+    "ResolutionResult",
     "SampleGenerator",
     "SizeMeasurer",
     "SizeMode",
@@ -109,5 +119,9 @@ __all__ = [
     "get_default_generator",
     "get_default_measurer",
     "get_default_tokenizer",
+    "is_ref_id",
     "resolve_actor",
+    "resolve_args_and_kwargs",
+    "resolve_kwargs",
+    "resolve_refs",
 ]
