@@ -30,6 +30,22 @@ Refactor the `@cache.cached()` decorator to provide full MCP tool integration wi
   - Changed RefCache to use token-based sizing (default) instead of character-based
   - Updated docstrings with caching/pagination/references documentation tags
   - Kept `calculate`, `store_secret`, `compute_with_secret`, `get_cached_result` as-is
+- [x] Fixed return type annotation issue for FastMCP compatibility:
+  - Decorator now modifies `wrapper.__annotations__["return"]` to `dict[str, Any]`
+  - This happens before `@mcp.tool` reads annotations
+  - Users keep natural return types in source code
+- [x] **Live tested with Zed/Claude** - all features verified:
+  - ✅ Small results → full `value` + `is_complete: true`
+  - ✅ Large results → `preview` + `is_complete: false` + pagination message
+  - ✅ Token-based sizing (500 token threshold)
+  - ✅ Ref_id resolution (single and multiple refs)
+  - ✅ Cache hit (same inputs return same ref_id)
+  - ✅ Cache miss (different inputs create new entry)
+  - ✅ **Cache hit via ref_id resolution** (resolved values match previous call)
+  - ✅ Secret storage with custom AccessPolicy
+  - ✅ Secret computation (EXECUTE without READ)
+  - ✅ Permission denied when agent tries to read secret
+- [x] Committed all changes
 
 ### TODO 📋
 - [ ] Integrate ref resolution with access control (deny without leaking info) - opaque errors
@@ -37,6 +53,7 @@ Refactor the `@cache.cached()` decorator to provide full MCP tool integration wi
 - [ ] Add async ref resolution tests
 - [ ] Consider short ref_id prefix matching (like git/docker) - see discussion below
 - [ ] Create a second example with character-based sizing for comparison
+- [ ] Improve pagination UX (sample strategy doesn't respond to page params)
 
 ---
 
@@ -277,6 +294,36 @@ This is intentional - all cached functions become MCP-ready automatically.
 
 ---
 
+## Live Testing Results (Zed/Claude)
+
+### Test Matrix
+
+| Test | Result | Details |
+|------|--------|---------|
+| Small sequence → full value | ✅ | `is_complete: true`, 10 fibonacci = 30 tokens |
+| Large sequence → preview | ✅ | `is_complete: false`, 500 fibonacci = 9885 tokens |
+| Matrix transpose | ✅ | Returns structured response |
+| Ref_id as input | ✅ | `matrix_a="calculator:xxx"` resolved correctly |
+| Multiple ref_ids | ✅ | Both matrix_a and matrix_b resolved |
+| Cache hit (same inputs) | ✅ | Same ref_id returned |
+| Cache hit via ref resolution | ✅ | **Key feature**: resolved values match → cache hit |
+| Secret storage | ✅ | Custom AccessPolicy applied |
+| Secret computation | ✅ | `42 * 2 + 10 = 94` |
+| Secret read protection | ✅ | "Permission denied" for agent |
+| FastMCP type validation | ✅ | No schema errors after annotation fix |
+
+### Cache Hit via Ref Resolution Example
+
+```
+1. matrix_operation([[1,3],[2,4]], "transpose") → ref_id: calculator:4236fabde4424caf
+2. matrix_operation("calculator:09c3ef408ad55e9a", "transpose")
+   - Resolves ref to [[1,3],[2,4]]
+   - Cache key matches step 1
+   - Returns SAME ref_id: calculator:4236fabde4424caf ✅
+```
+
+---
+
 ## Next Steps
 
 1. ~~Update `tests/test_refcache.py` to expect structured responses~~ ✅
@@ -284,6 +331,9 @@ This is intentional - all cached functions become MCP-ready automatically.
 3. ~~Run full test suite~~ ✅ (439 passed)
 4. ~~Update rules-template.md with new decorator patterns~~ ✅
 5. ~~Add tiktoken to dev dependencies~~ ✅
-6. Update example server (`examples/mcp_server.py`) to use new decorator
-7. Add max recursion depth limit for circular ref protection
-8. Test with finquant-mcp to validate real-world usage
+6. ~~Update example server to use new decorator~~ ✅
+7. ~~Live test with Zed/Claude~~ ✅
+8. ~~Fix FastMCP return type validation~~ ✅
+9. Add max recursion depth limit for circular ref protection
+10. Test with finquant-mcp to validate real-world usage
+11. Consider pagination UX improvements (paginate strategy vs sample)
