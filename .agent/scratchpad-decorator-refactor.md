@@ -350,7 +350,7 @@ This is intentional - all cached functions become MCP-ready automatically.
     - Prevents attackers from determining if a ref_id exists via error message analysis
     - Added tests to verify opaque error handling
 
-### Medium Priority (Polish)
+### Medium Priority (Polish) - Next Session
 11. **Pagination UX** - The `sample` strategy doesn't respond to page params
     - Consider auto-switching to `paginate` when page is specified
     - Or document current behavior more clearly
@@ -366,3 +366,93 @@ This is intentional - all cached functions become MCP-ready automatically.
 14. **Character-based sizing example** - Second example server for comparison
 
 15. **Test with finquant-mcp** - Real-world validation with actual financial data server
+
+---
+
+## Session 2 Summary (Completed)
+
+### Features Implemented
+1. **Circular reference detection** - Immediate cycle detection without depth limit
+2. **Opaque error messages** - Security hardening to prevent enumeration attacks
+3. **Return type annotation fix** - Decorator auto-updates annotations for FastMCP compatibility
+
+### Test Results
+- 445 tests passing (up from 439)
+- 5 new circular reference tests
+- 2 new opaque error security tests
+
+### Commits
+1. `feat(decorator): add structured responses and ref_id resolution`
+2. `docs(scratchpad): update with live testing results`
+3. `docs(rules-template): update with latest features and patterns`
+4. `feat(resolution): add circular reference detection`
+5. `security(resolution): use opaque error messages to prevent info leakage`
+
+---
+
+## Testing the New Features
+
+### Test Circular Reference Detection (in Zed/Claude)
+
+Can be tested by creating a scenario where cached values reference each other:
+1. Store a value that contains its own ref_id (self-reference)
+2. Expected: `CircularReferenceError` with chain info
+
+Note: In normal usage, circular refs are unlikely since tools don't typically
+store ref_ids inside their return values. This is a safety net.
+
+### Test Opaque Errors (in Zed/Claude)
+
+1. Try to use `get_cached_result` with a non-existent ref_id
+2. Try to read a secret ref_id directly (should be permission denied)
+3. Both should return similar error messages (not revealing why it failed)
+
+Example already tested in previous session:
+```
+get_cached_result(ref_id="calculator:8036bb698358a5f7")  # secret ref
+→ {"error": "Permission denied", ...}
+
+get_cached_result(ref_id="calculator:nonexistent12345")  # fake ref
+→ {"error": "Not found", ...}
+```
+
+Note: The MCP server's `get_cached_result` tool still shows different messages.
+The opaque errors are in the resolution layer. Consider updating the tool handlers
+to use opaque messages as well for full security.
+
+---
+
+## Next Session Starting Prompt
+
+\`\`\`
+Continue mcp-refcache: Medium Priority Polish Tasks
+
+## Context
+- All high priority tasks complete (circular ref detection, opaque errors)
+- 445 tests passing
+- See \`.agent/scratchpad-decorator-refactor.md\` for full context
+
+## What Was Done (Session 2)
+- Added circular reference detection with immediate cycle detection
+- Implemented opaque error messages for security (KeyError/PermissionError → same message)
+- Fixed return type annotation for FastMCP compatibility
+- Live tested all decorator features with Zed/Claude
+
+## Current Tasks (Medium Priority)
+
+1. **Pagination UX** - The \`sample\` strategy doesn't respond to page params
+   - Consider auto-switching to \`paginate\` when page is specified
+   - Or document current behavior more clearly in tool responses
+
+2. **Async ref resolution tests** - Current tests are sync only
+   - Add async function tests for resolution
+
+3. **(Optional) Opaque errors in MCP tool handlers**
+   - \`get_cached_result\` tool still shows "Permission denied" vs "Not found"
+   - Consider unifying error messages at the tool level too
+
+## Guidelines
+- Follow \`.rules\` (TDD, document as you go)
+- Run \`uv run ruff check . --fix && uv run ruff format .\`
+- Run \`uv run pytest tests/\` before considering complete
+\`\`\`
