@@ -704,9 +704,6 @@ class TestLangfuseIntegration:
             assert attrs["metadata"]["cachenamespace"] == "user:alice"
             assert attrs["metadata"]["operation"] == "cache_set"
 
-            # Verify model for cost tracking (default value)
-            assert attrs["model"] == "claude-opus-4-20250514"
-
             # Verify tags
             assert "mcprefcache" in attrs["tags"]
             assert "cacheset" in attrs["tags"]
@@ -807,24 +804,12 @@ class TestLangfuseIntegration:
             assert state["user_id"] == "demo_user"
             assert state["org_id"] == "demo_org"
             assert state["session_id"] == "demo_session_001"
-            assert state["model"] == "claude-opus-4-20250514"
 
             # Test set_state
             MockContext.set_state(user_id="bob", org_id="globex")
             state = MockContext.get_current_state()
             assert state["user_id"] == "bob"
             assert state["org_id"] == "globex"
-
-            # Test model can be set via set_state
-            MockContext.set_state(model="gpt-4o")
-            state = MockContext.get_current_state()
-            assert state["model"] == "gpt-4o"
-
-            # Verify model is included in langfuse attributes
-            langfuse_integration._test_mode_enabled = True
-            attrs = langfuse_integration.get_langfuse_attributes()
-            assert attrs["model"] == "gpt-4o"
-            langfuse_integration._test_mode_enabled = False
 
             # Test set_session_id
             MockContext.set_session_id("chat-999")

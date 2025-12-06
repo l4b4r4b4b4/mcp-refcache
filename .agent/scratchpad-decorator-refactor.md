@@ -1600,10 +1600,12 @@ async def get_user_data(user_id: str) -> dict:
 2. ✅ Track cache hit/miss status in span metadata
 3. ✅ User/session attribution via `propagate_attributes()`
 4. ✅ Comprehensive tests for traced caching behavior
+5. ✅ Removed fake cost tracking (no LLM calls = no costs to track)
+6. ✅ Fixed return type annotations for cached functions
 
 ### Implementation Summary
 
-#### Problem Identified
+#### Problem 1: TracedRefCache.cached() Bypass
 The original `TracedRefCache.cached()` simply delegated to the underlying cache:
 ```python
 def cached(self, *args, **kwargs):
@@ -1612,38 +1614,50 @@ def cached(self, *args, **kwargs):
 
 This bypassed the traced `set()`/`get()` methods because the decorator returned was bound to `self._cache`, not the `TracedRefCache` wrapper.
 
-#### Solution Implemented
-Enhanced `TracedRefCache.cached()` to:
-1. Get the underlying decorator from `self._cache.cached()`
-2. Wrap it with a tracing decorator that creates Langfuse spans
-3. Support both sync and async functions
-4. Track cache operation metadata (function name, namespace, hit/miss)
+**Solution:** Enhanced `TracedRefCache.cached()` to wrap with Langfuse spans.
 
-#### Key Code Pattern
+#### Problem 2: Fake Cost Tracking
+The `calculate` function was faking token counts to demonstrate Langfuse cost tracking:
 ```python
-def cached(self, namespace="public", **kwargs):
-    underlying_decorator = self._cache.cached(namespace=namespace, **kwargs)
-    
-    def tracing_decorator(func):
-        cached_func = underlying_decorator(func)
-        
-        async def async_traced_wrapper(*args, **kwargs):
-            with langfuse.start_as_current_observation(
-                as_type="span",
-                name=f"cache.{func.__name__}",
-            ) as span:
-                result = await cached_func(*args, **kwargs)
-                span.update(output={"ref_id": result.get("ref_id")})
-                return result
-        
-        return async_traced_wrapper
-    
-    return tracing_decorator
+input_tokens = len(expression) * 2  # FAKE!
+langfuse.update_current_generation(model=model, usage_details={...})
 ```
 
+**Reality:** These are pure computation tools with NO LLM calls. Cost tracking only makes sense for actual LLM API calls where you pay per token.
+
+**Solution:** Removed all fake cost tracking. These tools now trace as spans (not generations) for observability only.
+
+#### Problem 3: Return Type Mismatch
+Functions declared `-> list[int]` but `@cache.cached()` wraps returns in a dict:
+```python
+{"ref_id": "...", "value": [...], "is_complete": True, ...}
+```
+
+**Solution:** Changed return type annotations to `-> dict[str, Any]`.
+
+### Key Insight: When to Use Langfuse Cost Tracking
+
+| Scenario | Cost Tracking? | Observation Type |
+|----------|---------------|------------------|
+| Pure computation (math, sequences) | ❌ No | `span` |
+| Cache operations | ❌ No | `span` |
+| Real LLM API call (OpenAI, Anthropic) | ✅ Yes | `generation` |
+
+Cost tracking requires:
+1. `as_type="generation"` in `@observe`
+2. Real token counts from LLM API response
+3. `langfuse.update_current_generation(model=..., usage_details=...)`
+
 ### Files Modified
-- `examples/langfuse_integration.py` - Enhanced `TracedRefCache.cached()` (lines 526-706)
-- `tests/test_examples.py` - Added 7 new tests for traced caching
+- `examples/langfuse_integration.py`:
+  - Enhanced `TracedRefCache.cached()` with Langfuse spans
+  - Removed fake cost tracking from `calculate`
+  - Changed `@observe(as_type="generation")` to `@observe()` (span)
+  - Removed `model` field from MockContext and get_langfuse_attributes
+  - Fixed return type annotations for cached functions
+- `tests/test_examples.py`:
+  - Added 7 tests for traced caching
+  - Removed model-related assertions
 
 ### Tests Added
 - `test_traced_cached_creates_span_on_cache_miss`
@@ -1659,48 +1673,55 @@ def cached(self, namespace="public", **kwargs):
 - All linting passes
 
 ### Commits
-- `feat(langfuse): add Langfuse observability integration example` (Session 7-9 work)
-- `feat(langfuse): enhance TracedRefCache.cached() with Langfuse spans` (Session 10)
+1. `feat(langfuse): add Langfuse observability integration example` (Session 7-9)
+2. `feat(langfuse): enhance TracedRefCache.cached() with Langfuse spans` (Session 10)
+3. `fix(langfuse): fix return type annotations for cached functions`
+4. `refactor(langfuse): remove fake cost tracking from pure computation tools`
 
 ---
 
 ## Next Session Starting Prompt
 
 ```
-Continue mcp-refcache: Live Test Langfuse Integration
+Continue mcp-refcache: Documentation & Polish
 
 ## Context
-- Session 10 complete, TracedRefCache.cached() now creates Langfuse spans!
+- Session 10 complete, Langfuse integration finalized!
 - 586 tests passing
 - See `.agent/scratchpad-decorator-refactor.md` Session 10 for details
 
 ## What Was Done (Session 10)
-- Enhanced TracedRefCache.cached() to wrap with Langfuse spans
-- Spans named "cache.{function_name}" for each cached function
-- Metadata includes: function, namespace, userid, sessionid, cached status
-- Added 7 tests for traced caching behavior
+- Enhanced TracedRefCache.cached() with Langfuse spans
+- Removed fake cost tracking (no LLM calls = no costs)
+- Fixed return type annotations for cached functions
+- Cleaned up model field from MockContext
 
-## Current Task: Live Test in Zed/Claude
+## Key Learnings Documented
+- Cost tracking only for real LLM API calls
+- Pure computation tools use spans for observability
+- @cache.cached() wraps returns in dict, not raw values
 
-### Goals
-1. Test the traced cached functions in live Langfuse dashboard
-2. Verify spans appear correctly nested
-3. Confirm user/session attribution works across cache operations
+## Potential Next Tasks
 
-### Test Steps
-1. Enable test context: enable_test_context(True)
-2. Set user: set_test_context(user_id="alice", org_id="acme")
-3. Call generate_fibonacci(10) - creates cache.generate_fibonacci span
-4. Call again with same args - verify cache hit
-5. Check Langfuse dashboard for traces
+### Option A: README & Documentation
+- Update README with Langfuse integration section
+- Document TracedRefCache usage pattern
+- Add examples for real LLM cost tracking
 
-### Key Files
-- `examples/langfuse_integration.py` - TracedRefCache with enhanced cached()
+### Option B: Core Library Polish
+- Review and improve error messages
+- Add more comprehensive docstrings
+- Consider adding TracedRefCache to core library
+
+### Option C: New Features
+- Add metrics/stats collection
+- Implement cache warming utilities
+- Add export/import for cached values
 
 ## Guidelines
-- Verify in Langfuse dashboard that spans appear
-- Check parent-child span relationships
-- Confirm user_id/session_id attribution
+- Follow `.rules` (TDD, document as you go)
+- Run `uv run ruff check . --fix && uv run ruff format .`
+- Run `uv run pytest tests/` to verify
 ```
 
 ---

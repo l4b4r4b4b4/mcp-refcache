@@ -122,8 +122,6 @@ class MockContext:
     needed for context-scoped caching and Langfuse attribution:
     - session_id attribute
     - get_state(key) method for retrieving identity values
-
-    - model field for LLM cost tracking
     """
 
     # Class-level state storage (shared across all instances)
@@ -131,7 +129,6 @@ class MockContext:
         "user_id": "demo_user",
         "org_id": "demo_org",
         "agent_id": "demo_agent",
-        "model": "claude-opus-4-20250514",  # Default model for cost tracking
     }
     _session_id: ClassVar[str] = "demo_session_001"
 
@@ -179,7 +176,6 @@ class MockContext:
             "user_id": "demo_user",
             "org_id": "demo_org",
             "agent_id": "demo_agent",
-            "model": "claude-opus-4-20250514",
         }
         cls._session_id = "demo_session_001"
 
@@ -238,7 +234,6 @@ def get_langfuse_attributes(
     session_id = "nosession"
     org_id = "default"
     agent_id = "unknown"
-    model = "claude-opus-4-20250514"  # Default model for cost tracking
 
     # Extract from context if available
     if context is not None:
@@ -246,7 +241,6 @@ def get_langfuse_attributes(
         session_id = getattr(context, "session_id", None) or session_id
         org_id = context.get_state("org_id") or org_id
         agent_id = context.get_state("agent_id") or agent_id
-        model = context.get_state("model") or model
 
     # Truncate to ≤200 chars (Langfuse requirement)
     user_id = str(user_id)[:200]
@@ -277,7 +271,6 @@ def get_langfuse_attributes(
         "metadata": metadata,
         "tags": tags,
         "version": "1.0.0",
-        "model": model,  # For Langfuse cost tracking
     }
 
 
@@ -778,7 +771,6 @@ def set_test_context(
     org_id: str | None = None,
     session_id: str | None = None,
     agent_id: str | None = None,
-    model: str | None = None,
 ) -> dict[str, Any]:
     """Set test context values for Langfuse attribution demos.
 
@@ -791,7 +783,6 @@ def set_test_context(
         org_id: Organization identity (e.g., "acme", "globex").
         session_id: Session identifier for grouping traces.
         agent_id: Agent identity (e.g., "claude", "gpt4").
-        model: LLM model name for cost tracking (e.g., "claude-sonnet-4-20250514", "gpt-4o").
 
     Returns:
         Updated context state and example of Langfuse attributes.
@@ -802,8 +793,6 @@ def set_test_context(
         MockContext.set_state(org_id=org_id)
     if agent_id is not None:
         MockContext.set_state(agent_id=agent_id)
-    if model is not None:
-        MockContext.set_state(model=model)
     if session_id is not None:
         MockContext.set_session_id(session_id)
 
@@ -817,7 +806,6 @@ def set_test_context(
             "session_id": attributes["session_id"],
             "metadata": attributes["metadata"],
             "tags": attributes["tags"],
-            "model": attributes["model"],
         },
         "message": "Context updated. Next tool calls will use these Langfuse attributes.",
     }
@@ -843,33 +831,29 @@ def reset_test_context() -> dict[str, Any]:
 
 
 @mcp.tool
-@observe(
-    name="calculate", as_type="generation", capture_input=True, capture_output=True
-)
+@observe(name="calculate", capture_input=True, capture_output=True)
 def calculate(expression: str) -> dict[str, Any]:
     """Evaluate a mathematical expression with Langfuse tracing.
 
     All calculations are traced to Langfuse with:
     - user_id, session_id, org_id from context
     - Expression and result
-    - Model and token usage for cost tracking
     - Timing and error information
 
-    The model is determined from context/environment, enabling
-    per-user cost tracking and invoicing in Langfuse.
+    Note: This is a pure computation tool with no LLM calls, so there are
+    no inference costs to track. Langfuse cost tracking is only relevant
+    for tools that make actual LLM API calls (OpenAI, Anthropic, etc.).
 
     Args:
         expression: Mathematical expression to evaluate.
 
     Returns:
-        Dict with result, usage stats, and metadata.
+        Dict with result and tracing metadata.
     """
     import math
 
     # Get Langfuse attributes from context and propagate
-    # Model comes from session context for accurate cost tracking
     attributes = get_langfuse_attributes(operation="calculate")
-    model = attributes["model"]
 
     # Propagate attributes early so all child spans get them
     with propagate_attributes(
@@ -901,56 +885,20 @@ def calculate(expression: str) -> dict[str, Any]:
         try:
             result = eval(expression, {"__builtins__": {}}, safe_context)
 
-            # Simulate token usage for cost tracking
-            # In a real LLM scenario, these would come from the API response
-            input_tokens = len(expression) * 2  # ~2 tokens per character
-            output_tokens = len(str(result)) * 2
-
-            # Update the generation with model and usage for Langfuse cost tracking
-            langfuse.update_current_generation(
-                model=model,
-                usage_details={
-                    "input": input_tokens,
-                    "output": output_tokens,
-                },
-            )
-
             result_dict = {
                 "expression": expression,
                 "result": result,
                 "type": type(result).__name__,
-                "model": model,
-                "usage": {
-                    "input_tokens": input_tokens,
-                    "output_tokens": output_tokens,
-                    "total_tokens": input_tokens + output_tokens,
-                },
                 "traced_user": attributes["user_id"],
                 "traced_session": attributes["session_id"],
             }
             langfuse.flush()
             return result_dict
         except Exception as e:
-            # Still track usage on errors for cost attribution
-            input_tokens = len(expression) * 2
-            langfuse.update_current_generation(
-                model=model,
-                usage_details={
-                    "input": input_tokens,
-                    "output": 0,
-                },
-            )
-
             error_dict = {
                 "expression": expression,
                 "error": str(e),
                 "type": "error",
-                "model": model,
-                "usage": {
-                    "input_tokens": input_tokens,
-                    "output_tokens": 0,
-                    "total_tokens": input_tokens,
-                },
                 "traced_user": attributes["user_id"],
                 "traced_session": attributes["session_id"],
             }
@@ -967,9 +915,9 @@ async def generate_fibonacci(count: int = 20) -> dict[str, Any]:
     The result is cached and traced with full context propagation.
     Langfuse traces include user_id, session_id, org_id for filtering.
 
-    Note: This function returns a cache response dict, not a raw list.
-    Cost tracking is not available for cached functions (only for generation-type
-    observations like `calculate`). The caching benefit outweighs per-call cost tracking.
+    Note: This is a pure computation with no LLM calls, so there are no
+    inference costs to track. The @cache.cached() decorator returns a
+    structured response with ref_id and cache metadata.
 
     Args:
         count: Number of Fibonacci numbers to generate (1-1000).
@@ -1015,9 +963,12 @@ async def generate_fibonacci(count: int = 20) -> dict[str, Any]:
 async def generate_primes(count: int = 20) -> dict[str, Any]:
     """Generate prime numbers with caching and Langfuse tracing.
 
-    Note: This function returns a cache response dict, not a raw list.
-    Cost tracking is not available for cached functions (only for generation-type
-    observations like `calculate`). The caching benefit outweighs per-call cost tracking.
+    The result is cached and traced with full context propagation.
+    Langfuse traces include user_id, session_id, org_id for filtering.
+
+    Note: This is a pure computation with no LLM calls, so there are no
+    inference costs to track. The @cache.cached() decorator returns a
+    structured response with ref_id and cache metadata.
 
     Args:
         count: Number of prime numbers to generate (1-1000).
