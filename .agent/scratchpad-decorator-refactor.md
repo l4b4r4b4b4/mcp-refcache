@@ -1018,8 +1018,121 @@ Continue mcp-refcache: Documentation & Examples
 - Run `uv run pytest tests/` before considering complete
 ```
 
-### Security Goal
-Agents CANNOT control their own scoping - identity comes from 
+---
+
+## Session 7: Testable Example + Langfuse Integration (PLANNED)
+
+### Goals
+1. Add testable context-scoped example to `examples/mcp_server.py`
+2. Research and integrate Langfuse MCP for observability
+3. Live test in Zed/Claude
+
+### Task 1: Testable Context-Scoped Example
+
+Since we don't have real FastMCP middleware in dev, we need to mock context for testing.
+
+**Approach**: Add a test tool that patches `try_get_fastmcp_context` with configurable test values.
+
+```python
+# Example: Context-scoped tool with test mode
+@cache.cached(
+    namespace_template="user:{user_id}",
+    owner_template="user:{user_id}",
+    session_scoped=True,
+)
+@mcp.tool
+async def get_user_data(key: str) -> dict:
+    """Get user-scoped cached data.
+    
+    Each user gets isolated cache namespace.
+    """
+    return {"key": key, "data": f"Data for {key}"}
+
+# Test tool to simulate different user contexts
+@mcp.tool
+async def set_test_context(user_id: str, org_id: str = "default") -> dict:
+    """Set test context values for context-scoped caching demo."""
+    # Store in module-level state that try_get_fastmcp_context can read
+    ...
+```
+
+**Alternative**: Use environment variables or a config file to set test context values.
+
+### Task 2: Langfuse MCP Integration
+
+**Research needed:**
+- What MCP tools/resources does Langfuse expose?
+- How to trace tool calls and cache operations?
+- Integration with existing RefCache operations
+
+**Potential integration points:**
+- Trace each `@cache.cached()` call with Langfuse spans
+- Log cache hits/misses as events
+- Track ref_id resolution chains
+- Observe permission checks
+
+### Files to Modify
+1. `examples/mcp_server.py` - Add context-scoped example + test utilities
+2. `examples/langfuse_integration.py` (NEW) - Langfuse-enabled server example
+3. `README.md` - Document new features
+
+### Test Plan
+1. Start example server
+2. Call `set_test_context(user_id="alice")`
+3. Call `get_user_data(key="profile")` - should cache in `user:alice` namespace
+4. Call `set_test_context(user_id="bob")`
+5. Call `get_user_data(key="profile")` - should be cache MISS (different namespace)
+6. Verify Langfuse traces show the operations
+
+---
+
+## Next Session Starting Prompt
+
+```
+Continue mcp-refcache: Testable Example + Langfuse Integration
+
+## Context
+- Sessions 1-6 complete, 569 tests passing
+- Context-scoped caching fully implemented
+- See `.agent/scratchpad-decorator-refactor.md` Session 7 for plan
+
+## Session 7 Goals
+
+### Goal 1: Testable Context-Scoped Example
+Add to `examples/mcp_server.py`:
+- Context-scoped tool using `namespace_template`, `owner_template`, `session_scoped`
+- Test utility to simulate different user/agent contexts
+- Works without real FastMCP middleware
+
+Options for mocking context:
+A) Module-level state + custom `try_get_fastmcp_context` wrapper
+B) Environment variables for test context values
+C) A `@with_test_context(user_id="alice")` decorator
+
+### Goal 2: Langfuse MCP Integration
+Research Langfuse's MCP support:
+- Use `getLangfuseOverview` and `searchLangfuseDocs` tools
+- Find: How to trace MCP tool calls
+- Find: Python SDK integration patterns
+- Implement: Tracing for cache operations
+
+Create `examples/langfuse_integration.py`:
+- RefCache with Langfuse tracing
+- Spans for cache set/get/resolve
+- Events for cache hits/misses
+- Trace ref_id resolution chains
+
+### Deliverables
+1. Working context-scoped example testable in Zed
+2. Langfuse-integrated example server
+3. Updated README with examples
+
+## Guidelines
+- Follow `.rules` (TDD where applicable)
+- Research Langfuse docs before implementing
+- Run `uv run ruff check . --fix && uv run ruff format .`
+- Live test in Zed/Claude to verify
+```
 authenticated session context, not function parameters.
 
 ## Guidelines
