@@ -337,10 +337,12 @@ This is intentional - all cached functions become MCP-ready automatically.
 8. ~~Fix FastMCP return type validation~~ ✅
 
 ### High Priority (Security/Stability)
-9. **Max recursion depth limit** - Prevent infinite loops if ref A → ref B → ref A
-   - Add `max_depth` parameter to resolution (default: 10)
-   - Track visited ref_ids to detect cycles
-   - Raise clear error on cycle detection or depth exceeded
+9. ~~**Circular reference detection**~~ ✅ - Prevent infinite loops if ref A → ref B → ref A
+   - Track visited ref_ids to detect cycles immediately (no depth limit needed)
+   - Raise `CircularReferenceError` with full chain on cycle detection
+   - Support nested ref resolution (resolved values containing more ref_ids)
+   - No false positives for same ref_id in sibling positions
+   - Added 5 tests for circular reference scenarios
 
 10. **Opaque error messages** - Security: same error for not-found, expired, permission-denied
     - Wrap resolution in try/except catching KeyError AND PermissionError

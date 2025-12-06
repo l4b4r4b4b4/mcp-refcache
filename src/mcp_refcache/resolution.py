@@ -252,15 +252,17 @@ class RefResolver:
                 )
 
             return resolved_value
-        except KeyError as error:
+        except KeyError:
             if self._fail_on_missing:
-                raise
-            errors[ref_id] = f"Not found or expired: {error}"
+                # Raise opaque error that doesn't leak existence info
+                raise KeyError(f"Invalid or inaccessible reference: {ref_id}")
+            errors[ref_id] = "Invalid or inaccessible reference"
             return ref_id  # Return original ref_id on failure
-        except PermissionError as error:
+        except PermissionError:
             if self._fail_on_missing:
-                raise
-            errors[ref_id] = f"Permission denied: {error}"
+                # Raise same opaque error as KeyError (security: don't leak existence)
+                raise KeyError(f"Invalid or inaccessible reference: {ref_id}")
+            errors[ref_id] = "Invalid or inaccessible reference"
             return ref_id
         finally:
             # Remove from visiting set when done (whether success or failure)

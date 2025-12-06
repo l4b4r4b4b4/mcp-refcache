@@ -261,16 +261,23 @@ class TestRefResolver:
         assert result.value == "test:abcd1234abcd1234"
 
     def test_resolve_permission_denied_fails(self, cache: RefCache) -> None:
-        """Test that permission denied raises when fail_on_missing=True."""
+        """Test that permission denied raises opaque KeyError when fail_on_missing=True.
+
+        For security, permission denied raises KeyError (not PermissionError)
+        to prevent leaking information about whether a ref exists.
+        """
         policy = AccessPolicy(agent_permissions=Permission.NONE)
         ref = cache.set("secret", "hidden", policy=policy)
         resolver = RefResolver(cache, actor="agent", fail_on_missing=True)
 
-        with pytest.raises(PermissionError):
+        # Should raise KeyError, NOT PermissionError (security: opaque error)
+        with pytest.raises(KeyError) as exc_info:
             resolver.resolve(ref.ref_id)
 
+        assert "Invalid or inaccessible reference" in str(exc_info.value)
+
     def test_resolve_permission_denied_collects_error(self, cache: RefCache) -> None:
-        """Test that permission denied collects error when fail_on_missing=False."""
+        """Test that permission denied collects opaque error when fail_on_missing=False."""
         policy = AccessPolicy(agent_permissions=Permission.NONE)
         ref = cache.set("secret", "hidden", policy=policy)
         resolver = RefResolver(cache, actor="agent", fail_on_missing=False)
@@ -279,7 +286,8 @@ class TestRefResolver:
 
         assert result.has_errors
         assert ref.ref_id in result.errors
-        assert "Permission denied" in result.errors[ref.ref_id]
+        # Should use opaque message (not "Permission denied")
+        assert result.errors[ref.ref_id] == "Invalid or inaccessible reference"
 
 
 class TestResolveRefsConvenienceFunction:
@@ -481,7 +489,7 @@ class TestSecurityConsiderations:
         """Test that error messages don't leak information about existence.
 
         The error message for 'not found' and 'permission denied' should be
-        similar enough that an attacker cannot determine if a ref exists.
+        identical so an attacker cannot determine if a ref exists.
         """
         # Create a ref that agent can't access
         policy = AccessPolicy(agent_permissions=Permission.NONE)
@@ -499,14 +507,42 @@ class TestSecurityConsiderations:
         assert result1.has_errors
         assert result2.has_errors
 
-        # Error messages should both indicate inaccessibility
-        # (not specifically "doesn't exist" vs "permission denied")
+        # Error messages MUST be identical (opaque - no info leakage)
         error1 = result1.errors[existing_ref.ref_id]
         error2 = result2.errors["secure:abcd1234abcd1234"]
 
-        # Just verify both are error strings (actual message format tested elsewhere)
-        assert isinstance(error1, str)
-        assert isinstance(error2, str)
+        assert error1 == error2, (
+            "Error messages should be identical to prevent info leakage"
+        )
+        assert error1 == "Invalid or inaccessible reference"
+        assert "permission" not in error1.lower()
+        assert "denied" not in error1.lower()
+        assert "not found" not in error1.lower()
+        assert "expired" not in error1.lower()
+
+    def test_opaque_error_when_fail_on_missing_true(self, cache: RefCache) -> None:
+        """Test that raised exceptions are also opaque."""
+        # Create a ref that agent can't access
+        policy = AccessPolicy(agent_permissions=Permission.NONE)
+        existing_ref = cache.set("secret", "hidden", policy=policy)
+
+        resolver = RefResolver(cache, actor="agent", fail_on_missing=True)
+
+        # Both permission denied and not found should raise KeyError with same message format
+        import pytest
+
+        with pytest.raises(KeyError) as exc_info1:
+            resolver.resolve(existing_ref.ref_id)
+
+        with pytest.raises(KeyError) as exc_info2:
+            resolver.resolve("secure:abcd1234abcd1234")
+
+        # Both should use opaque message format
+        assert "Invalid or inaccessible reference" in str(exc_info1.value)
+        assert "Invalid or inaccessible reference" in str(exc_info2.value)
+        # Should not contain revealing info
+        assert "permission" not in str(exc_info1.value).lower()
+        assert "denied" not in str(exc_info1.value).lower()
 
     def test_ref_pattern_prevents_injection(self, cache: RefCache) -> None:
         """Test that ref_id pattern prevents path traversal or injection."""
