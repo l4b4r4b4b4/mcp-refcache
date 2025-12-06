@@ -93,10 +93,19 @@ The server uses different strategies to create previews:
 - **truncate**: First N characters/tokens (for strings)
 - **paginate**: Sequential pages of items
 
-### Navigation Tips
+## Navigation Tips
 1. Check `total_items` and `total_pages` to understand data size
 2. Use sequential pages to scan through data
 3. The preview gives you a representative sample to understand the data structure
+
+## Preview Size Control
+
+Preview size can be configured at three levels (highest priority first):
+1. **Per-call**: `get_cached_result(ref_id, max_size=100)` - override for this request
+2. **Per-tool**: Set by the tool author - check tool description for details
+3. **Server default**: Falls back to server configuration
+
+Use smaller `max_size` for quick summaries, larger for more context.
 """.strip()
 
 # =============================================================================
@@ -212,6 +221,11 @@ This server uses reference-based caching for large results.
 - Paginate: `get_cached_result(ref_id, page=2, page_size=20)`
 - Pass to tools: use `ref_id` as input parameter
 - Some refs are execute-only (use in computation, can't read)
+
+**Preview Size Control:**
+- Per-call override: `get_cached_result(ref_id, max_size=100)`
+- Per-tool: Check tool description for tool-specific limits
+- Server default: Used when no override specified
 
 **Note:** References may expire. Cache admin tools are restricted to elevated users.
 """.strip()

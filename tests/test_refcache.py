@@ -1522,6 +1522,143 @@ class TestPaginationAutoSwitch:
         assert result.strategy == PreviewStrategy.TRUNCATE
 
 
+class TestHierarchicalMaxSize:
+    """Tests for three-level max_size priority: per-call > per-tool > server default."""
+
+    def test_server_default_max_size_used_when_no_override(self) -> None:
+        """Server default max_size is used when no override is specified."""
+        cache = RefCache(
+            name="test",
+            measurer=CharacterMeasurer(),
+            preview_config=PreviewConfig(max_size=50),
+        )
+        large_list = list(range(100))
+        result = cache._create_preview(large_list)
+
+        # Should use server default of 50 chars
+        assert result.preview_size <= 50
+
+    def test_per_call_max_size_overrides_server_default(self) -> None:
+        """Per-call max_size overrides server default."""
+        cache = RefCache(
+            name="test",
+            measurer=CharacterMeasurer(),
+            preview_config=PreviewConfig(max_size=50),
+        )
+        large_list = list(range(100))
+
+        # Per-call override with larger max_size
+        result = cache._create_preview(large_list, max_size=200)
+
+        # Should use per-call max_size of 200, so preview should be larger
+        assert result.preview_size <= 200
+        # With 200 chars, we can fit more items than with 50
+        assert len(result.preview) > 5  # More items than with small max_size
+
+    def test_per_call_max_size_can_be_smaller_than_default(self) -> None:
+        """Per-call max_size can be smaller than server default."""
+        cache = RefCache(
+            name="test",
+            measurer=CharacterMeasurer(),
+            preview_config=PreviewConfig(max_size=500),
+        )
+        large_list = list(range(100))
+
+        # Per-call override with smaller max_size
+        result = cache._create_preview(large_list, max_size=20)
+
+        # Should use per-call max_size of 20
+        assert result.preview_size <= 20
+
+    def test_get_method_accepts_max_size(self) -> None:
+        """RefCache.get() accepts max_size parameter."""
+        cache = RefCache(
+            name="test",
+            measurer=CharacterMeasurer(),
+            preview_config=PreviewConfig(max_size=500),
+        )
+        ref = cache.set("key1", list(range(100)))
+
+        # Get with smaller max_size
+        response = cache.get(ref.ref_id, max_size=30)
+
+        # Should use the per-call max_size
+        assert response.preview_size <= 30
+
+    def test_per_tool_max_size_in_cached_decorator(self) -> None:
+        """Per-tool max_size in @cache.cached() is used."""
+        cache = RefCache(
+            name="test",
+            measurer=CharacterMeasurer(),
+            preview_config=PreviewConfig(max_size=500),  # Large server default
+        )
+
+        # Tool with smaller max_size
+        @cache.cached(namespace="public", max_size=50)
+        def generate_data() -> list[int]:
+            return list(range(100))
+
+        result = generate_data()
+
+        # Should use per-tool max_size of 50, so is_complete should be False
+        # (100 items won't fit in 50 chars)
+        assert result["is_complete"] is False
+        assert "preview" in result
+
+    def test_per_tool_max_size_allows_larger_results(self) -> None:
+        """Per-tool max_size can be larger than server default."""
+        cache = RefCache(
+            name="test",
+            measurer=CharacterMeasurer(),
+            preview_config=PreviewConfig(max_size=10),  # Small server default
+        )
+
+        # Tool with larger max_size
+        @cache.cached(namespace="public", max_size=500)
+        def generate_small_data() -> list[int]:
+            return [1, 2, 3, 4, 5]
+
+        result = generate_small_data()
+
+        # Should use per-tool max_size of 500, so small result fits completely
+        assert result["is_complete"] is True
+        assert result["value"] == [1, 2, 3, 4, 5]
+
+    def test_decorator_docstring_includes_max_size_info(self) -> None:
+        """Decorated function docstring includes max_size info."""
+        cache = RefCache(name="test")
+
+        @cache.cached(namespace="public", max_size=500)
+        def my_function() -> list[int]:
+            """Original docstring."""
+            return [1, 2, 3]
+
+        assert "max_size=500 tokens" in my_function.__doc__
+
+    def test_decorator_docstring_mentions_server_default_when_no_max_size(self) -> None:
+        """Decorated function docstring mentions server default when no max_size."""
+        cache = RefCache(name="test")
+
+        @cache.cached(namespace="public")
+        def my_function() -> list[int]:
+            """Original docstring."""
+            return [1, 2, 3]
+
+        assert "server default" in my_function.__doc__
+
+    def test_decorator_docstring_mentions_per_call_override(self) -> None:
+        """Decorated function docstring mentions per-call override option."""
+        cache = RefCache(name="test")
+
+        @cache.cached(namespace="public", max_size=100)
+        def my_function() -> list[int]:
+            """Original docstring."""
+            return [1, 2, 3]
+
+        assert "get_cached_result" in my_function.__doc__
+        assert "max_size" in my_function.__doc__
+
+
 class TestAsyncDecoratorRefResolution:
     """Tests for ref_id resolution in async decorated functions."""
 

@@ -249,6 +249,7 @@ class RefCache:
         *,
         page: int | None = None,
         page_size: int | None = None,
+        max_size: int | None = None,
         actor: ActorLike = "agent",
     ) -> CacheResponse:
         """Get a preview of a cached value.
@@ -257,6 +258,8 @@ class RefCache:
             ref_id: Reference ID or key to look up.
             page: Page number for pagination (1-indexed).
             page_size: Number of items per page.
+            max_size: Maximum preview size (tokens/chars). Overrides server default.
+                Use smaller values for quick summaries, larger for more context.
             actor: Who is requesting. Can be an Actor object or literal "user"/"agent".
 
         Returns:
@@ -288,6 +291,7 @@ class RefCache:
             entry.value,
             page=page,
             page_size=page_size,
+            max_size=max_size,
         )
 
         return CacheResponse(
@@ -489,13 +493,21 @@ class RefCache:
 
             # Inject cache documentation into docstring
             original_doc = func.__doc__ or ""
-            cache_doc = """
+
+            # Build max_size documentation
+            if max_size is not None:
+                max_size_doc = f"max_size={max_size} tokens"
+            else:
+                max_size_doc = "server default"
+
+            cache_doc = f"""
 
 **Caching Behavior:**
 - Any input parameter can accept a ref_id from a previous tool call
 - Large results return ref_id + preview; use get_cached_result to paginate
 - All responses include ref_id for future reference
-"""
+
+**Preview Size:** {max_size_doc}. Override per-call with `get_cached_result(ref_id, max_size=...)`."""
             func.__doc__ = original_doc + cache_doc
 
             def _resolve_inputs(
@@ -748,6 +760,7 @@ class RefCache:
         value: Any,
         page: int | None = None,
         page_size: int | None = None,
+        max_size: int | None = None,
     ) -> PreviewResult:
         """Create a preview of a value using the configured generator.
 
@@ -762,11 +775,15 @@ class RefCache:
                 forces use of PaginateGenerator even if SampleGenerator
                 is the default.
             page_size: Number of items per page.
+            max_size: Maximum preview size. Overrides server default if provided.
 
         Returns:
             PreviewResult with preview data and metadata.
         """
-        max_size = self.preview_config.max_size
+        # Use provided max_size or fall back to config default
+        effective_max_size = (
+            max_size if max_size is not None else self.preview_config.max_size
+        )
 
         # Auto-switch to PaginateGenerator when page is specified
         # This ensures pagination works regardless of default strategy
@@ -776,7 +793,7 @@ class RefCache:
 
         return generator.generate(
             value=value,
-            max_size=max_size,
+            max_size=effective_max_size,
             measurer=self._measurer,
             page=page,
             page_size=page_size,

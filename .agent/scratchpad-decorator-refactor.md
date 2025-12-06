@@ -10,7 +10,7 @@ Refactor the `@cache.cached()` decorator to provide full MCP tool integration wi
 
 ---
 
-## Current Status: Core Implementation Complete ✅
+## Current Status: Session 4 Complete ✅
 
 ### Completed ✅
 - [x] Created `src/mcp_refcache/resolution.py` with ref_id detection and resolution utilities
@@ -46,14 +46,12 @@ Refactor the `@cache.cached()` decorator to provide full MCP tool integration wi
   - ✅ Secret computation (EXECUTE without READ)
   - ✅ Permission denied when agent tries to read secret
 - [x] Committed all changes
+- [x] **Session 3**: Pagination auto-switch, async tests, opaque errors (459 tests)
+- [x] **Session 4**: Hierarchical max_size feature with documentation injection (499 tests)
 
 ### TODO 📋
-- [ ] Integrate ref resolution with access control (deny without leaking info) - opaque errors
-- [ ] Add max recursion depth limit to prevent infinite loops
-- [ ] Add async ref resolution tests
 - [ ] Consider short ref_id prefix matching (like git/docker) - see discussion below
 - [ ] Create a second example with character-based sizing for comparison
-- [ ] Improve pagination UX (sample strategy doesn't respond to page params)
 
 ---
 
@@ -538,7 +536,7 @@ Tested with `max_size=64` tokens:
 
 ---
 
-## Session 4: Hierarchical max_size Feature (Planned)
+## Session 4: Hierarchical max_size Feature ✅ COMPLETE
 
 ### Problem Statement
 
@@ -548,59 +546,55 @@ Currently, `max_size` is only configurable at the server level via `PreviewConfi
 2. Some calls may need custom sizes based on context
 3. No way to override at runtime without reconfiguring the cache
 
-### Proposed Solution: Three-Level max_size Hierarchy
+### Solution: Three-Level max_size Hierarchy
 
 **Priority (highest to lowest):**
-1. **Per-call** - Passed to `get_cached_result(ref_id, max_size=200)` or in tool kwargs
-2. **Per-tool** - Configured in `@cache.cached(max_size=500)`
-3. **Server default** - `PreviewConfig(max_size=1024)` (fallback)
+1. **Per-call** - `get_cached_result(ref_id, max_size=200)`
+2. **Per-tool** - `@cache.cached(max_size=500)`
+3. **Server default** - `PreviewConfig(max_size=1024)`
 
-### Implementation Plan
+### Implementation Complete ✅
 
-#### Phase 1: Per-tool max_size in @cache.cached()
+#### Files Modified
 
-**Files to modify:**
-- `src/mcp_refcache/cache.py` - Add `max_size` parameter to `cached()` decorator
+1. **`src/mcp_refcache/fastmcp/instructions.py`**
+   - Added "Preview Size Control" section to `COMPACT_INSTRUCTIONS`
+   - Added "Preview Size Control" section to `FULL_CACHE_GUIDE`
+   - Documents three-level priority with examples
 
-**Changes:**
-```python
-@cache.cached(max_size=500)  # Tool-specific limit
-async def generate_large_data(...):
-    ...
-```
+2. **`src/mcp_refcache/cache.py`**
+   - Added `max_size` parameter to `RefCache.get()` method
+   - Added `max_size` parameter to `_create_preview()` method
+   - Updated `cached()` decorator to inject max_size info into docstrings
+   - Docstring now shows tool-specific max_size or "server default"
 
-**Implementation:**
-1. Add `max_size: int | None = None` to `cached()` signature
-2. Store on wrapper function for later use
-3. Pass to `_build_response()` when generating preview
+3. **`examples/mcp_server.py`**
+   - Added `max_size` field to `CacheQueryInput` model
+   - Added `max_size` parameter to `get_cached_result` tool
+   - Passes max_size to `cache.get()`
 
-#### Phase 2: Per-call max_size in get_cached_result
+#### Tests Added
 
-**Files to modify:**
-- `examples/mcp_server.py` - Add `max_size` parameter to `get_cached_result`
-- `src/mcp_refcache/cache.py` - Add `max_size` to `get()` method
+**`tests/test_refcache.py` - `TestHierarchicalMaxSize` (9 tests):**
+- `test_server_default_max_size_used_when_no_override`
+- `test_per_call_max_size_overrides_server_default`
+- `test_per_call_max_size_can_be_smaller_than_default`
+- `test_get_method_accepts_max_size`
+- `test_per_tool_max_size_in_cached_decorator`
+- `test_per_tool_max_size_allows_larger_results`
+- `test_decorator_docstring_includes_max_size_info`
+- `test_decorator_docstring_mentions_server_default_when_no_max_size`
+- `test_decorator_docstring_mentions_per_call_override`
 
-**Changes:**
-```python
-get_cached_result(ref_id, page=2, max_size=100)  # Per-call override
-```
+**`tests/test_fastmcp_instructions.py` (31 tests):**
+- Tests for compact instructions content
+- Tests for full cache guide content
+- Tests for preview size control documentation
+- Tests for `cache_instructions()`, `cache_guide_prompt()`, etc.
+- Tests for `with_cache_docs()` decorator
+- Tests for `cached_tool_description()` function
 
-**Implementation:**
-1. Add `max_size: int | None = None` to `RefCache.get()`
-2. If provided, use it instead of `self.preview_config.max_size`
-3. Add to `get_cached_result` tool signature
-
-#### Phase 3: Resolution Logic
-
-**Priority resolution in `_create_preview()`:**
-```python
-def _create_preview(self, value, page=None, page_size=None, max_size=None):
-    # Use provided max_size or fall back to config
-    effective_max_size = max_size or self.preview_config.max_size
-    ...
-```
-
-### API Design
+### API Usage
 
 ```python
 # Level 1: Server default (lowest priority)
@@ -612,6 +606,7 @@ cache = RefCache(
 @cache.cached(max_size=500)
 async def generate_sequence(...):
     ...
+# Docstring now includes: "**Preview Size:** max_size=500 tokens. Override per-call..."
 
 # Level 3: Per-call (highest priority)
 response = cache.get(ref_id, max_size=100)
@@ -619,61 +614,71 @@ response = cache.get(ref_id, max_size=100)
 get_cached_result(ref_id, max_size=100)
 ```
 
-### Test Cases
+### Documentation Injection
 
-1. `test_per_call_max_size_overrides_default`
-2. `test_per_tool_max_size_overrides_default`
-3. `test_per_call_overrides_per_tool`
-4. `test_no_override_uses_server_default`
-5. `test_max_size_affects_preview_size`
+The `@cache.cached()` decorator now injects max_size info into docstrings:
 
-### Estimated Effort
+**With explicit max_size:**
+```
+**Preview Size:** max_size=500 tokens. Override per-call with `get_cached_result(ref_id, max_size=...)`.
+```
 
-- Phase 1 (per-tool): ~30 minutes
-- Phase 2 (per-call): ~30 minutes  
-- Phase 3 (integration + tests): ~30 minutes
-- Total: ~1.5 hours
+**Without max_size (server default):**
+```
+**Preview Size:** server default. Override per-call with `get_cached_result(ref_id, max_size=...)`.
+```
+
+### Test Results
+
+- **499 tests passing** (up from 459)
+- 40 new tests added (9 hierarchical max_size + 31 instructions)
+- All linting clean
+
+### Live Testing Results ✅
+
+Tested with Zed/Claude using the calculator MCP server:
+
+| Test | Command | Result |
+|------|---------|--------|
+| Server default (64 tokens) | `generate_sequence("fibonacci", 100)` | ✅ `preview_size: 64`, 11 items |
+| Per-call max_size=20 | `get_cached_result(ref_id, max_size=20)` | ✅ `preview_size: 18`, 3 items |
+| Per-call max_size=200 | `get_cached_result(ref_id, max_size=200)` | ✅ `preview_size: 199`, 34 items |
+| Pagination + max_size | `get_cached_result(ref_id, page=2, page_size=10, max_size=50)` | ✅ Both work together |
+| Small result → full value | `matrix_operation([[1,2,3],[4,5,6],[7,8,9]], "transpose")` | ✅ `is_complete: true` |
+
+**Key Observations:**
+- Smaller `max_size` → fewer items in preview (more aggressive sampling)
+- Larger `max_size` → more items in preview
+- Pagination and max_size work independently and can be combined
+- Tool docstrings now visible to agents with max_size info
 
 ---
 
 ## Next Session Starting Prompt
 
 ```
-Continue mcp-refcache: Hierarchical max_size Feature
+Continue mcp-refcache: Polish & Review
 
 ## Context
-- Sessions 1-3 complete, 459 tests passing
-- Pagination auto-switch implemented and tested
+- Sessions 1-4 complete, 499 tests passing
+- All core features implemented:
+  - Ref resolution with circular detection
+  - Structured responses (value vs preview)
+  - Pagination auto-switch
+  - Opaque error messages
+  - Hierarchical max_size with doc injection
 - See `.agent/scratchpad-decorator-refactor.md` for full context
 
-## What Was Done (Session 3)
-- Implemented pagination auto-switch (SampleGenerator → PaginateGenerator when page specified)
-- Added 7 async ref resolution tests
-- Unified opaque error messages in get_cached_result
-- Live tested all features with Zed/Claude
+## What Was Done (Session 4)
+- Implemented three-level max_size hierarchy
+- Added max_size to RefCache.get(), _create_preview(), and get_cached_result
+- Updated cache_instructions() with Preview Size Control section
+- Decorator injects max_size info into docstrings
+- Added 40 new tests (9 + 31)
 
-## Current Task: Hierarchical max_size
-
-Implement three-level max_size priority:
-1. **Per-call** (highest) - `get_cached_result(ref_id, max_size=100)`
-2. **Per-tool** (medium) - `@cache.cached(max_size=500)`
-3. **Server default** (lowest) - `PreviewConfig(max_size=1024)`
-
-### Implementation Phases
-
-**Phase 1: Per-tool max_size in @cache.cached()**
-- Add `max_size: int | None = None` to `cached()` decorator
-- Pass to `_build_response()` when generating preview
-
-**Phase 2: Per-call max_size**
-- Add `max_size` param to `RefCache.get()` and `_create_preview()`
-- Add to `get_cached_result` tool in example server
-
-**Phase 3: Tests**
-- test_per_call_max_size_overrides_default
-- test_per_tool_max_size_overrides_default
-- test_per_call_overrides_per_tool
-- test_no_override_uses_server_default
+## Remaining Tasks
+- [ ] Short ref_id prefix matching (like git/docker)
+- [ ] Character-based sizing example
 
 ## Guidelines
 - Follow `.rules` (TDD, document as you go)

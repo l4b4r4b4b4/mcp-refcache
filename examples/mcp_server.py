@@ -275,6 +275,11 @@ class CacheQueryInput(BaseModel):
         le=100,
         description="Number of items per page",
     )
+    max_size: int | None = Field(
+        default=None,
+        ge=1,
+        description="Maximum preview size (tokens/chars). Overrides tool and server defaults.",
+    )
 
 
 # =============================================================================
@@ -669,6 +674,7 @@ async def get_cached_result(
     ref_id: str,
     page: int | None = None,
     page_size: int | None = None,
+    max_size: int | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Retrieve a cached result, optionally with pagination.
@@ -682,6 +688,10 @@ async def get_cached_result(
         - page: Page number (1-indexed)
         - page_size: Items per page (default varies by data type)
 
+    Preview Size:
+        - max_size: Maximum preview size (tokens/chars). Overrides tool and server defaults.
+          Use smaller values for quick summaries, larger for more context.
+
 
     **Caching:** Large results are returned as references with previews.
 
@@ -689,17 +699,20 @@ async def get_cached_result(
 
     **References:** This tool accepts `ref_id` from previous tool calls.
     """
-    validated = CacheQueryInput(ref_id=ref_id, page=page, page_size=page_size)
+    validated = CacheQueryInput(
+        ref_id=ref_id, page=page, page_size=page_size, max_size=max_size
+    )
 
     if ctx:
         await ctx.info(f"Retrieving cached result: {validated.ref_id}")
 
     try:
-        # Get with pagination if specified
+        # Get with pagination and/or custom max_size if specified
         response: CacheResponse = cache.get(
             validated.ref_id,
             page=validated.page,
             page_size=validated.page_size,
+            max_size=validated.max_size,
             actor="agent",  # Agent access - respects permissions
         )
 

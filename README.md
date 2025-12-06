@@ -41,7 +41,8 @@ When an AI agent calls a tool that returns a large dataset (e.g., 500KB JSON), t
 
 The agent can then:
 - **Paginate** through the data as needed
-- **Pass the reference** to another tool (server resolves it)
+- **Pass the reference** to another tool (server resolves it automatically)
+- **Control preview size** at server, tool, or per-call level
 - **Use without seeing** - Execute permission enables blind computation
 
 ## Installation
@@ -105,6 +106,34 @@ async def process_data(data_ref: str) -> dict:
 ```
 
 ## Core Concepts
+
+### Preview Size Control
+
+Preview size can be configured at three levels (highest priority first):
+
+```python
+from mcp_refcache import RefCache, PreviewConfig
+
+# Level 1: Server default (lowest priority)
+cache = RefCache(
+    preview_config=PreviewConfig(max_size=1024)  # tokens or chars
+)
+
+# Level 2: Per-tool (medium priority)
+@cache.cached(max_size=500)  # Override for this tool
+async def generate_large_data(...):
+    ...
+
+# Level 3: Per-call (highest priority)
+response = cache.get(ref_id, max_size=100)  # Override for this call
+# Or via tool:
+get_cached_result(ref_id, max_size=100)
+```
+
+This hierarchy allows:
+- **Server admins** to set sensible defaults
+- **Tool authors** to specify appropriate limits per tool
+- **Agents** to request smaller/larger previews as needed
 
 ### Namespaces
 
@@ -240,18 +269,32 @@ cache = RefCache(
 async def my_tool(...): ...
 ```
 
-### Return Types
+### The @cache.cached() Decorator
+
+The decorator provides full MCP tool integration:
 
 ```python
-from mcp_refcache import ReturnOptions, ValueReturnType
-
-# Control what agent sees
-options = ReturnOptions(
-    value_type=ValueReturnType.PREVIEW,  # or FULL, REFERENCE_ONLY
-    include_metadata=True,
-    pagination=PaginationParams(page=1, page_size=20),
+@mcp.tool
+@cache.cached(
+    namespace="data",        # Namespace for isolation
+    max_size=500,            # Per-tool preview size limit
+    ttl=3600,                # TTL in seconds
+    resolve_refs=True,       # Auto-resolve ref_ids in inputs
 )
+async def process_data(data: list[int]) -> list[float]:
+    """Process data - accepts ref_ids, returns structured response."""
+    return [x * 1.5 for x in data]
+
+# Agent can call with ref_id from previous tool:
+# process_data(data="calculator:abc123")
+# Decorator resolves ref_id → actual list before execution
 ```
+
+**Features:**
+- **Pre-execution**: Recursively resolves ref_ids in all inputs
+- **Post-execution**: Returns structured response with ref_id
+- **Size-based**: Small results return full value, large return preview
+- **Doc injection**: Adds caching info to tool docstrings automatically
 
 ## Roadmap
 
