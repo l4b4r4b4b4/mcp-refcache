@@ -344,10 +344,11 @@ This is intentional - all cached functions become MCP-ready automatically.
    - No false positives for same ref_id in sibling positions
    - Added 5 tests for circular reference scenarios
 
-10. **Opaque error messages** - Security: same error for not-found, expired, permission-denied
-    - Wrap resolution in try/except catching KeyError AND PermissionError
-    - Return generic "Invalid or inaccessible reference" message
-    - Prevents enumeration attacks
+10. ~~**Opaque error messages**~~ ✅ - Security: same error for not-found, expired, permission-denied
+    - Both KeyError and PermissionError now raise/return identical opaque messages
+    - Error message: "Invalid or inaccessible reference" (no 'not found', 'expired', or 'permission denied')
+    - Prevents attackers from determining if a ref_id exists via error message analysis
+    - Added tests to verify opaque error handling
 
 ### Medium Priority (Polish)
 11. **Pagination UX** - The `sample` strategy doesn't respond to page params
