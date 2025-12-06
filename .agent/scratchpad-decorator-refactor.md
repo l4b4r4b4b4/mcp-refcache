@@ -685,3 +685,284 @@ Continue mcp-refcache: Polish & Review
 - Run `uv run ruff check . --fix && uv run ruff format .`
 - Run `uv run pytest tests/` before considering complete
 ```
+
+---
+
+## Session 5: Context-Scoped Caching (Research Complete, Implementation Planned)
+
+### Problem Statement
+
+Currently, namespaces are hardcoded at decoration time:
+```python
+@cache.cached(namespace="session:conv-123")  # ❌ Hardcoded!
+```
+
+In real-world MCP servers (banking, healthcare, enterprise), we need:
+```python
+@cache.cached(namespace="org:{org_id}:user:{user_id}")  # ✅ Dynamic!
+```
+
+Where `user_id`, `session_id`, and `org_id` come from:
+1. **Session context** (set by the MCP client, NOT the agent)
+2. **Tool call metadata** (injected by FastMCP middleware)
+3. **NOT from function arguments** (agents shouldn't control their own scoping!)
+
+### Security Concern
+
+If we let agents pass `user_id` as a function parameter, a malicious agent could:
+```python
+# Agent tries to access another user's data
+get_account_balance(user_id="victim_user")  # ❌ Should be forbidden!
+```
+
+Instead, `user_id` should come from the authenticated session context.
+
+### FastMCP Context Research
+
+**What FastMCP provides:**
+
+| Source | Available Data |
+|--------|----------------|
+| `Context` | `session_id`, `request_id`, `client_id` |
+| `Context.get_state(key)` | Any value set by middleware |
+| `get_access_token()` | `client_id`, `scopes`, `claims` (JWT with `sub`, `tenant_id`, etc.) |
+
+**Key Pattern:** Middleware extracts identity from auth tokens → sets in context state → tools read from context state.
+
+```python
+from fastmcp.server.middleware import Middleware, MiddlewareContext
+from fastmcp.server.dependencies import get_access_token
+
+# Middleware sets identity (runs before tool)
+class IdentityMiddleware(Middleware):
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        token = get_access_token()
+        ctx = context.fastmcp_context
+        if token:
+            ctx.set_state("user_id", token.claims.get("sub"))
+            ctx.set_state("org_id", token.claims.get("org_id"))
+        return await call_next(context)
+
+# Tool reads from context (NOT from agent input!)
+@mcp.tool
+async def get_balance(ctx: Context) -> dict:
+    user_id = ctx.get_state("user_id")  # Secure - from auth
+    ...
+```
+
+### Critical Discovery: Decorator Order Works!
+
+**Question:** Can our decorator access FastMCP Context if it wraps `@mcp.tool`?
+
+**Answer:** YES! FastMCP uses `ContextVar` and sets context BEFORE calling tools.
+
+```python
+# From fastmcp/server/dependencies.py
+def get_context() -> Context:
+    from fastmcp.server.context import _current_context
+    context = _current_context.get()
+    if context is None:
+        raise RuntimeError("No active context found.")
+    return context
+```
+
+**Execution flow:**
+1. FastMCP receives request
+2. FastMCP does `async with Context()` → sets `_current_context` ContextVar
+3. FastMCP calls the tool (wrapped by both decorators)
+4. Our `cache.cached` wrapper runs → can call `get_context()` ✅
+5. Tool executes
+
+**This means we don't need `ctx` as a parameter - we can call `get_context()` internally!**
+
+### Proposed Solution: Context-Scoped Caching
+
+```python
+from mcp_refcache import RefCache
+
+cache = RefCache(name="banking")
+
+@cache.cached(
+    namespace_template="org:{org_id}:user:{user_id}",  # Dynamic template
+    owner_template="user:{user_id}",                   # Auto-set owner
+    session_scoped=True,                               # Bind to session
+)
+@mcp.tool
+async def get_account_balance(account_id: str) -> dict:
+    # No ctx parameter needed in function signature!
+    # Decorator internally calls get_context() to get:
+    #   - user_id from ctx.get_state("user_id")
+    #   - org_id from ctx.get_state("org_id")
+    #   - session_id from ctx.session_id
+    # 
+    # Namespace becomes: "org:acme_corp:user:alice"
+    # Owner becomes: "user:alice"
+    # Session binding: Only this session can access
+    ...
+```
+
+### Template Expansion Logic
+
+**Template syntax:** `"org:{org_id}:user:{user_id}"`
+
+**Value sources (in order):**
+1. `ctx.get_state(key)` - Values set by middleware
+2. `ctx.session_id` - For `{session_id}` placeholder
+3. `ctx.client_id` - For `{client_id}` placeholder
+
+**Default fallbacks when values are missing:**
+- `{user_id}` → `"anonymous"`
+- `{org_id}` → `"default"`
+- `{session_id}` → `"nosession"`
+- `{client_id}` → `"unknown"`
+
+This keeps caching working even without full auth setup.
+
+### Integration with Permission System
+
+The existing permission system already supports all needed features:
+
+| Feature | Existing Support | How We'll Use It |
+|---------|------------------|------------------|
+| `AccessPolicy.owner` | ✅ | Set from `owner_template` |
+| `AccessPolicy.bound_session` | ✅ | Set from `ctx.session_id` when `session_scoped=True` |
+| `DefaultActor.user(id, session_id)` | ✅ | Create from context for permission checks |
+| Namespace ownership checks | ✅ | `DefaultPermissionChecker` validates access |
+
+### New Decorator Parameters
+
+```python
+@cache.cached(
+    # Existing parameters
+    namespace: str = "public",           # Static namespace (existing)
+    policy: AccessPolicy | None = None,
+    ttl: float | None = None,
+    max_size: int | None = None,
+    resolve_refs: bool = True,
+    actor: str = "agent",
+    
+    # NEW: Context-scoped parameters
+    namespace_template: str | None = None,    # Dynamic namespace with {placeholders}
+    owner_template: str | None = None,        # Dynamic owner with {placeholders}
+    session_scoped: bool = False,             # Bind to ctx.session_id
+    context_keys: list[str] | None = None,    # Required context keys (validation)
+)
+```
+
+**Priority:** `namespace_template` > `namespace` (template wins if both provided)
+
+### Implementation Phases
+
+#### Phase 1: Context-Scoped Decorator (Core Feature)
+- Add `namespace_template`, `owner_template`, `session_scoped` to `@cache.cached()`
+- Import and use `get_context()` from `fastmcp.server.dependencies`
+- Extract values from `ctx.get_state()` and `ctx.session_id`
+- Build namespace and owner from templates with fallbacks
+- Set `bound_session` if `session_scoped=True`
+- Handle case where FastMCP is not installed (graceful degradation)
+
+#### Phase 2: Convenience Middleware (Optional Helper)
+- Provide `IdentityMiddleware` that extracts from access tokens
+- Sets standard keys: `user_id`, `org_id`, `tenant_id`, `session_id`
+- Users can use our middleware or write their own
+
+**Phase 1 is self-contained** - it just needs context state to be set (by any middleware).
+
+### Test Plan
+
+```python
+# Test with mock Context
+class TestContextScopedCaching:
+    def test_namespace_template_expansion(self):
+        # Mock get_context() to return context with state
+        ...
+    
+    def test_owner_template_expansion(self):
+        ...
+    
+    def test_session_scoped_binds_to_session(self):
+        ...
+    
+    def test_missing_context_value_uses_fallback(self):
+        ...
+    
+    def test_no_fastmcp_graceful_degradation(self):
+        # When fastmcp not installed, use static namespace
+        ...
+    
+    def test_context_scoped_cache_isolation(self):
+        # Different users get different cache entries
+        ...
+    
+    def test_permission_check_uses_context_actor(self):
+        # Actor derived from context for access control
+        ...
+```
+
+### Files to Modify
+
+1. **`src/mcp_refcache/cache.py`**
+   - Add new parameters to `cached()` decorator
+   - Add template expansion logic
+   - Add `get_context()` integration (with try/except for non-FastMCP)
+
+2. **`src/mcp_refcache/context_integration.py`** (NEW)
+   - Template expansion utilities
+   - Context value extraction helpers
+   - Default fallback logic
+
+3. **`tests/test_context_scoping.py`** (NEW)
+   - Tests for context-scoped caching
+
+4. **`examples/mcp_server.py`**
+   - Add example with context-scoped tool
+
+5. **`README.md`**
+   - Document context-scoped caching pattern
+
+---
+
+## Next Session Starting Prompt
+
+```
+Continue mcp-refcache: Context-Scoped Caching
+
+## Context
+- Sessions 1-4 complete, 499 tests passing
+- Research complete on FastMCP Context integration
+- See `.agent/scratchpad-decorator-refactor.md` Session 5 for full design
+
+## Key Discovery
+- FastMCP sets Context via ContextVar BEFORE calling tools
+- Our decorator can call `get_context()` from `fastmcp.server.dependencies`
+- No need for `ctx` parameter in function signature!
+
+## Implementation Plan
+
+### Phase 1: Context-Scoped Decorator
+Add to `@cache.cached()`:
+- `namespace_template="org:{org_id}:user:{user_id}"` - Dynamic namespace
+- `owner_template="user:{user_id}"` - Auto-set owner  
+- `session_scoped=True` - Bind to session
+
+Template values come from:
+1. `ctx.get_state(key)` - Middleware-set values
+2. `ctx.session_id`, `ctx.client_id` - Built-in Context attrs
+3. Fallbacks: "anonymous", "default", "nosession"
+
+### Files to Create/Modify
+1. `src/mcp_refcache/context_integration.py` (NEW) - Template expansion
+2. `src/mcp_refcache/cache.py` - Add new decorator params
+3. `tests/test_context_scoping.py` (NEW) - Context scoping tests
+4. `examples/mcp_server.py` - Add context-scoped example
+
+### Security Goal
+Agents CANNOT control their own scoping - identity comes from 
+authenticated session context, not function parameters.
+
+## Guidelines
+- Follow `.rules` (TDD, document as you go)
+- Handle missing FastMCP gracefully (try/except import)
+- Run `uv run ruff check . --fix && uv run ruff format .`
+- Run `uv run pytest tests/` before considering complete
+```
