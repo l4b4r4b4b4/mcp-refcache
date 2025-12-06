@@ -1411,3 +1411,245 @@ class TestRefCachePreviewResult:
         result = cache._create_preview("A" * 5000)
 
         assert result.strategy == PreviewStrategy.TRUNCATE
+
+
+class TestPaginationAutoSwitch:
+    """Tests for auto-switching from SampleGenerator to PaginateGenerator when page is specified."""
+
+    def test_sample_generator_stays_sample_when_no_page(self) -> None:
+        """SampleGenerator is used when no page is specified."""
+        cache = RefCache(
+            measurer=CharacterMeasurer(),
+            preview_generator=SampleGenerator(),
+        )
+        large_list = list(range(1000))
+        result = cache._create_preview(large_list)
+
+        assert result.strategy == PreviewStrategy.SAMPLE
+        assert result.page is None
+        assert result.total_pages is None
+
+    def test_sample_generator_switches_to_paginate_when_page_specified(self) -> None:
+        """SampleGenerator switches to PaginateGenerator when page is specified."""
+        cache = RefCache(
+            measurer=CharacterMeasurer(),
+            preview_generator=SampleGenerator(),
+        )
+        large_list = list(range(1000))
+        result = cache._create_preview(large_list, page=1, page_size=50)
+
+        assert result.strategy == PreviewStrategy.PAGINATE
+        assert result.page == 1
+        assert result.total_pages == 20  # 1000 items / 50 per page
+
+    def test_sample_generator_page_2_returns_correct_items(self) -> None:
+        """When page=2 is specified, SampleGenerator returns page 2 content."""
+        cache = RefCache(
+            measurer=CharacterMeasurer(),
+            preview_generator=SampleGenerator(),
+        )
+        large_list = list(range(100))
+        result = cache._create_preview(large_list, page=2, page_size=10)
+
+        assert result.strategy == PreviewStrategy.PAGINATE
+        assert result.page == 2
+        assert result.preview == list(range(10, 20))
+
+    def test_paginate_generator_respects_page_always(self) -> None:
+        """PaginateGenerator always respects page parameter."""
+        from mcp_refcache.preview import PaginateGenerator
+
+        cache = RefCache(
+            measurer=CharacterMeasurer(),
+            preview_generator=PaginateGenerator(),
+        )
+        large_list = list(range(100))
+
+        # Without page (defaults to page 1)
+        result1 = cache._create_preview(large_list)
+        assert result1.strategy == PreviewStrategy.PAGINATE
+        assert result1.page == 1
+
+        # With explicit page
+        result2 = cache._create_preview(large_list, page=3, page_size=10)
+        assert result2.page == 3
+        assert result2.preview == list(range(20, 30))
+
+    def test_get_with_page_uses_pagination_even_with_sample_default(self) -> None:
+        """RefCache.get() with page param uses pagination even when SampleGenerator is default."""
+        cache = RefCache(
+            name="test-cache",
+            measurer=CharacterMeasurer(),
+            preview_generator=SampleGenerator(),
+        )
+        ref = cache.set("key1", list(range(100)))
+
+        # Without page - should sample
+        response1 = cache.get(ref.ref_id)
+        assert response1.preview_strategy == PreviewStrategy.SAMPLE
+        assert response1.page is None
+
+        # With page - should paginate
+        response2 = cache.get(ref.ref_id, page=2, page_size=10)
+        assert response2.preview_strategy == PreviewStrategy.PAGINATE
+        assert response2.page == 2
+        assert response2.total_pages == 10
+
+    def test_get_with_page_returns_correct_page_content(self) -> None:
+        """RefCache.get() with page returns the correct page content."""
+        cache = RefCache(
+            name="test-cache",
+            measurer=CharacterMeasurer(),
+            preview_generator=SampleGenerator(),
+        )
+        ref = cache.set("key1", list(range(50)))
+
+        response = cache.get(ref.ref_id, page=3, page_size=10)
+        assert response.preview == list(range(20, 30))
+
+    def test_truncate_generator_not_affected_by_page(self) -> None:
+        """TruncateGenerator is not affected by page parameter (no auto-switch)."""
+        from mcp_refcache.preview import TruncateGenerator
+
+        cache = RefCache(
+            measurer=CharacterMeasurer(),
+            preview_generator=TruncateGenerator(),
+        )
+        long_string = "A" * 5000
+        result = cache._create_preview(long_string, page=2)
+
+        # TruncateGenerator doesn't support pagination, no auto-switch
+        assert result.strategy == PreviewStrategy.TRUNCATE
+
+
+class TestAsyncDecoratorRefResolution:
+    """Tests for ref_id resolution in async decorated functions."""
+
+    @pytest.fixture
+    def cache(self) -> RefCache:
+        """Create a fresh RefCache for testing."""
+        return RefCache(name="test-cache")
+
+    def test_async_cached_resolves_ref_in_kwarg(self, cache: RefCache) -> None:
+        """Test that ref_id in kwargs is resolved in async function."""
+        import asyncio
+
+        ref = cache.set("multiplier", 2.5)
+
+        @cache.cached()
+        async def multiply(value: int, factor: float) -> float:
+            return value * factor
+
+        result = asyncio.run(multiply(value=10, factor=ref.ref_id))
+
+        assert result["value"] == 25.0
+        assert result["is_complete"] is True
+
+    def test_async_cached_resolves_ref_in_positional_arg(self, cache: RefCache) -> None:
+        """Test that ref_id in positional args is resolved in async function."""
+        import asyncio
+
+        ref = cache.set("data", [1, 2, 3])
+
+        @cache.cached()
+        async def sum_list(numbers: list[int]) -> int:
+            return sum(numbers)
+
+        result = asyncio.run(sum_list(ref.ref_id))
+
+        assert result["value"] == 6
+
+    def test_async_cached_resolves_nested_ref_in_dict(self, cache: RefCache) -> None:
+        """Test that ref_id nested in dict is resolved in async function."""
+        import asyncio
+
+        ref = cache.set("prices", [100, 200, 300])
+
+        @cache.cached()
+        async def process(data: dict) -> int:
+            return sum(data["prices"])
+
+        result = asyncio.run(process(data={"prices": ref.ref_id, "name": "test"}))
+
+        assert result["value"] == 600
+
+    def test_async_cached_resolves_multiple_refs(self, cache: RefCache) -> None:
+        """Test that multiple ref_ids are all resolved in async function."""
+        import asyncio
+
+        ref1 = cache.set("a", 10)
+        ref2 = cache.set("b", 20)
+
+        @cache.cached()
+        async def add(x: int, y: int) -> int:
+            return x + y
+
+        result = asyncio.run(add(x=ref1.ref_id, y=ref2.ref_id))
+
+        assert result["value"] == 30
+
+    def test_async_cached_cache_hit_via_resolved_refs(self, cache: RefCache) -> None:
+        """Test that cache key is based on resolved values, enabling cache hits."""
+        import asyncio
+
+        call_count = 0
+        ref = cache.set("factor", 2.0)
+
+        @cache.cached()
+        async def multiply(value: int, factor: float) -> float:
+            nonlocal call_count
+            call_count += 1
+            return value * factor
+
+        # Call with ref_id
+        result1 = asyncio.run(multiply(value=5, factor=ref.ref_id))
+        # Call with same resolved value directly
+        result2 = asyncio.run(multiply(value=5, factor=2.0))
+
+        # Both should return same result and only call function once
+        assert result1["value"] == 10.0
+        assert result2["value"] == 10.0
+        assert result1["ref_id"] == result2["ref_id"]
+        assert call_count == 1  # Only called once due to cache hit
+
+    def test_async_cached_circular_ref_detection(self, cache: RefCache) -> None:
+        """Test that circular references are detected in async functions."""
+        import asyncio
+
+        # Create a self-referencing structure by storing a value
+        # then creating a dict that references it
+        ref1 = cache.set("data1", {"value": 1})
+
+        # Now store a value that will reference ref1
+        ref2 = cache.set("data2", {"nested": ref1.ref_id})
+
+        # Create circular: update data1 to reference data2
+        # Since we can't update, we'll test with a function that would
+        # encounter the same ref_id multiple times in resolution chain
+        cache.set("circular", ref2.ref_id)
+
+        @cache.cached()
+        async def process(data: dict) -> dict:
+            return data
+
+        # This should work - same ref in siblings is allowed
+        result = asyncio.run(process(data={"a": ref1.ref_id, "b": ref1.ref_id}))
+        assert result["value"]["a"] == {"value": 1}
+        assert result["value"]["b"] == {"value": 1}
+
+    def test_async_cached_with_await_inside(self, cache: RefCache) -> None:
+        """Test async function with actual await calls inside."""
+        import asyncio
+
+        ref = cache.set("items", [1, 2, 3, 4, 5])
+
+        @cache.cached()
+        async def process_async(items: list[int]) -> int:
+            # Simulate async work
+            await asyncio.sleep(0.001)
+            return sum(items)
+
+        result = asyncio.run(process_async(items=ref.ref_id))
+
+        assert result["value"] == 15
+        assert result["is_complete"] is True

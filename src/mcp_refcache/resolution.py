@@ -255,13 +255,13 @@ class RefResolver:
         except KeyError:
             if self._fail_on_missing:
                 # Raise opaque error that doesn't leak existence info
-                raise KeyError(f"Invalid or inaccessible reference: {ref_id}")
+                raise KeyError(f"Invalid or inaccessible reference: {ref_id}") from None
             errors[ref_id] = "Invalid or inaccessible reference"
             return ref_id  # Return original ref_id on failure
         except PermissionError:
             if self._fail_on_missing:
                 # Raise same opaque error as KeyError (security: don't leak existence)
-                raise KeyError(f"Invalid or inaccessible reference: {ref_id}")
+                raise KeyError(f"Invalid or inaccessible reference: {ref_id}") from None
             errors[ref_id] = "Invalid or inaccessible reference"
             return ref_id
         finally:

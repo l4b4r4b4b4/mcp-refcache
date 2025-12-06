@@ -35,8 +35,10 @@ from mcp_refcache.models import (
 )
 from mcp_refcache.permissions import AccessPolicy, Permission
 from mcp_refcache.preview import (
+    PaginateGenerator,
     PreviewGenerator,
     PreviewResult,
+    SampleGenerator,
     get_default_generator,
 )
 from mcp_refcache.resolution import resolve_args_and_kwargs
@@ -749,9 +751,16 @@ class RefCache:
     ) -> PreviewResult:
         """Create a preview of a value using the configured generator.
 
+        When a page number is specified and the configured generator is
+        SampleGenerator, automatically switches to PaginateGenerator for
+        that call. This ensures pagination "just works" regardless of the
+        default preview strategy.
+
         Args:
             value: The value to create a preview of.
-            page: Page number for pagination (1-indexed).
+            page: Page number for pagination (1-indexed). When specified,
+                forces use of PaginateGenerator even if SampleGenerator
+                is the default.
             page_size: Number of items per page.
 
         Returns:
@@ -759,7 +768,13 @@ class RefCache:
         """
         max_size = self.preview_config.max_size
 
-        return self._preview_generator.generate(
+        # Auto-switch to PaginateGenerator when page is specified
+        # This ensures pagination works regardless of default strategy
+        generator = self._preview_generator
+        if page is not None and isinstance(generator, SampleGenerator):
+            generator = PaginateGenerator()
+
+        return generator.generate(
             value=value,
             max_size=max_size,
             measurer=self._measurer,

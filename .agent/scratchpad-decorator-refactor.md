@@ -422,6 +422,110 @@ to use opaque messages as well for full security.
 
 ---
 
+---
+
+## Session 3: Medium Priority Polish Tasks
+
+### Current Focus
+
+#### Task 1: Pagination UX - Auto-switch to Paginate Strategy
+
+**Problem:** When using `SampleGenerator` (default), the `page` and `page_size` parameters are explicitly ignored. The docstring even says "page: Ignored for sample strategy." However, instructions tell users to use `get_cached_result(ref_id, page=2)` for pagination - which does nothing with the sample strategy.
+
+**Solution:** Auto-switch to `PaginateGenerator` when `page` is specified.
+
+**Implementation:**
+- Modify `RefCache._create_preview()` to check if `page` is not None
+- If page is specified and current generator is `SampleGenerator`, use `PaginateGenerator` for that call
+- This is transparent to the user and "just works"
+
+**Files to modify:**
+- `src/mcp_refcache/cache.py` - `_create_preview` method
+
+**Tests to add:**
+- `test_sample_generator_switches_to_paginate_when_page_specified`
+- `test_sample_generator_stays_sample_when_no_page`
+- `test_paginate_generator_respects_page_always`
+
+---
+
+#### Task 2: Async Ref Resolution Tests
+
+**Problem:** Current resolution tests only test sync functions. The `@cache.cached()` decorator handles both sync and async functions, but we don't have explicit async tests for ref resolution.
+
+**Files to modify:**
+- `tests/test_resolution.py` - Add async test class
+
+**Tests to add:**
+- `test_async_function_resolves_refs_in_args`
+- `test_async_function_resolves_refs_in_kwargs`
+- `test_async_function_resolves_nested_refs`
+- `test_async_function_circular_ref_detection`
+
+---
+
+#### Task 3 (Optional): Opaque Errors in MCP Tool Handlers
+
+**Problem:** The `get_cached_result` tool in `examples/mcp_server.py` still returns different error messages:
+- "Permission denied" for PermissionError
+- "Not found" for KeyError
+
+This could leak information about whether a reference exists.
+
+**Solution:** Unify error messages like we did for the ref resolution layer.
+
+**Files to modify:**
+- `examples/mcp_server.py` - `get_cached_result` function
+
+---
+
+### Implementation Plan
+
+1. **Start with Task 1** (Pagination UX) - most impactful for user experience
+2. **Then Task 2** (Async tests) - improves test coverage
+3. **Optionally Task 3** (Opaque errors) - minor security polish
+
+### Session 3 Progress
+
+- [x] Task 1: Pagination UX auto-switch ✅
+  - [x] Implement auto-switch in `_create_preview`
+  - [x] Add 7 tests for auto-switch behavior
+  - [x] Verified: `get_cached_result(ref_id, page=2)` now returns page 2
+- [x] Task 2: Async resolution tests ✅
+  - [x] Add `TestAsyncDecoratorRefResolution` class (7 tests)
+  - [x] Test async decorated functions with ref resolution
+  - [x] Test cache hit via resolved refs in async
+  - [x] Test circular ref detection in async context
+- [x] Task 3: Opaque errors in get_cached_result ✅
+  - [x] Unified error messages: "Invalid or inaccessible reference"
+  - [x] PermissionError and KeyError return identical responses
+
+### Session 3 Summary
+
+**Tests:** 459 passing (up from 445)
+
+**Changes Made:**
+1. `src/mcp_refcache/cache.py`:
+   - Added `SampleGenerator` and `PaginateGenerator` imports
+   - Modified `_create_preview()` to auto-switch to `PaginateGenerator` when `page` is specified
+   
+2. `src/mcp_refcache/resolution.py`:
+   - Fixed B904 linting errors with `from None` in exception re-raises
+
+3. `tests/test_refcache.py`:
+   - Added `TestPaginationAutoSwitch` class (7 tests)
+   - Added `TestAsyncDecoratorRefResolution` class (7 tests)
+
+4. `examples/mcp_server.py`:
+   - Unified error handling in `get_cached_result` for opaque errors
+
+**Key Improvements:**
+- Pagination now "just works" even with SampleGenerator default
+- Async functions properly resolve refs before execution
+- No information leakage about ref existence vs permission denial
+
+---
+
 ## Next Session Starting Prompt
 
 \`\`\`

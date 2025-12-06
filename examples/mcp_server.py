@@ -722,16 +722,12 @@ async def get_cached_result(
 
         return result
 
-    except PermissionError as e:
+    except (PermissionError, KeyError):
+        # Opaque error: don't reveal whether ref exists or is permission-denied
+        # This prevents enumeration attacks and information leakage
         return {
-            "error": "Permission denied",
-            "message": str(e),
-            "ref_id": validated.ref_id,
-        }
-    except KeyError:
-        return {
-            "error": "Not found",
-            "message": f"Reference '{validated.ref_id}' not found or expired",
+            "error": "Invalid or inaccessible reference",
+            "message": "Reference not found, expired, or access denied",
             "ref_id": validated.ref_id,
         }
 
