@@ -10,8 +10,10 @@ This file provides rules and patterns for AI coding assistants working on MCP se
 - **Automatic structured responses**: All decorated tools return `ref_id + value/preview`
 - **Deep ref_id resolution**: Any input can contain ref_ids that get auto-resolved
 - **Size-based response switching**: Small results include full value, large results include preview
+- **Cache hit via resolution**: Ref_ids resolve to values, and cache keys use resolved values
 - **Pagination**: Agents can page through large cached data
 - **Private computation**: Use values in computations without exposing them
+- **Transparent type handling**: Keep natural return types in source; decorator handles FastMCP schema
 
 ---
 
@@ -24,9 +26,9 @@ The decorator automatically handles caching and structured responses:
 ```python
 @mcp.tool
 @cache.cached(namespace="data")
-def generate_data(size: int) -> list[int]:
+def generate_data(size: int) -> list[int]:  # Keep natural return type!
     """Generate a list of integers."""
-    return list(range(size))
+    return list(range(size))  # Just return raw data
 
 # Small result returns:
 # {"ref_id": "...", "value": [0, 1, 2], "is_complete": True, "size": 12, "total_items": 3}
@@ -36,6 +38,9 @@ def generate_data(size: int) -> list[int]:
 ```
 
 The tool body stays clean - no caching logic needed!
+
+**Note:** Keep your natural return type (`list[int]`, `dict[str, Any]`, etc.) in the source code.
+The decorator automatically updates the annotation to `dict[str, Any]` for FastMCP schema generation.
 
 ### 2. Always Register a `get_cached_result` Tool
 
@@ -83,27 +88,35 @@ def get_cached_result(
         return {"error": "Not found", "ref_id": ref_id}
 ```
 
-### 3. Use Token-Based Size Limiting
+### 3. Use Token-Based Size Limiting (Default)
 
-Always use token-based sizing for accurate LLM context management:
+Token-based sizing is the default - no configuration needed for most cases:
 
 ```python
-from mcp_refcache import (
-    RefCache,
-    PreviewConfig,
-    PreviewStrategy,
-    SizeMode,
-    TiktokenAdapter,
-)
+from mcp_refcache import RefCache, PreviewConfig, PreviewStrategy
 
+# Simple setup - uses token-based sizing by default
 cache = RefCache(
     name="my-server",
     default_ttl=3600,
-    tokenizer=TiktokenAdapter("gpt-4o"),  # Use tiktoken!
     preview_config=PreviewConfig(
-        size_mode=SizeMode.TOKEN,  # NOT CHARACTER
-        max_size=500,  # tokens, not characters
+        max_size=500,  # tokens (default mode is TOKEN)
         default_strategy=PreviewStrategy.SAMPLE,
+    ),
+)
+```
+
+For explicit configuration or custom tokenizer:
+
+```python
+from mcp_refcache import RefCache, PreviewConfig, SizeMode, TiktokenAdapter
+
+cache = RefCache(
+    name="my-server",
+    tokenizer=TiktokenAdapter("gpt-4o"),  # Custom model
+    preview_config=PreviewConfig(
+        size_mode=SizeMode.TOKEN,  # Explicit (this is the default)
+        max_size=500,
     ),
 )
 ```
@@ -153,6 +166,24 @@ process_data(
 # Function receives fully resolved values:
 # prices={"AAPL": [100, 101, 102.5], "MSX": [200, 201, 202]}, multiplier=2.0
 ```
+
+### Cache Hit via Ref_id Resolution
+
+The cache key is generated from **resolved** values, enabling smart cache hits:
+
+```python
+# Call 1: Direct values
+matrix_operation([[1, 3], [2, 4]], "transpose")
+# → Creates cache entry, returns ref_id: calculator:abc123
+
+# Call 2: Via ref_id that resolves to same values
+matrix_operation("calculator:xyz789", "transpose")
+# → Resolves ref to [[1, 3], [2, 4]]
+# → Cache key matches Call 1
+# → Returns SAME ref_id: calculator:abc123 (cache hit!)
+```
+
+This means tool chains naturally benefit from caching even when passing ref_ids between tools.
 
 ---
 
@@ -367,15 +398,31 @@ def get_value() -> int:
 result = get_value()  # result is {"ref_id": "...", "value": 42, ...}, NOT 42!
 ```
 
+### ❌ Changing Return Type Annotation to dict
+
+```python
+# UNNECESSARY - Decorator handles this automatically
+@mcp.tool
+@cache.cached()
+def get_data() -> dict[str, Any]:  # Don't change your natural type!
+    return [1, 2, 3]
+
+# GOOD - Keep natural type, decorator updates annotation for FastMCP
+@mcp.tool
+@cache.cached()
+def get_data() -> list[int]:  # Natural return type
+    return [1, 2, 3]  # Return raw data
+```
+
 ---
 
 ## Checklist for MCP Server Integration
 
-- [ ] RefCache initialized with `TiktokenAdapter` tokenizer
-- [ ] `PreviewConfig` uses `SizeMode.TOKEN`
+- [ ] RefCache initialized (token-based sizing is default)
 - [ ] `cache_instructions()` included in server instructions
 - [ ] `get_cached_result` tool registered
 - [ ] Tools use `@cache.cached(namespace="...")` decorator
+- [ ] Tools keep natural return types (decorator handles FastMCP schema)
 - [ ] Tool docstrings mention that inputs can accept ref_ids
 - [ ] Tool docstrings mention that large results return ref_id + preview
 
