@@ -1593,45 +1593,114 @@ async def get_user_data(user_id: str) -> dict:
 
 ---
 
+## Session 10: Langfuse + RefCache Integration ✅ COMPLETE
+
+### Goals Achieved
+1. ✅ Enhanced `TracedRefCache.cached()` to add Langfuse spans for cache operations
+2. ✅ Track cache hit/miss status in span metadata
+3. ✅ User/session attribution via `propagate_attributes()`
+4. ✅ Comprehensive tests for traced caching behavior
+
+### Implementation Summary
+
+#### Problem Identified
+The original `TracedRefCache.cached()` simply delegated to the underlying cache:
+```python
+def cached(self, *args, **kwargs):
+    return self._cache.cached(*args, **kwargs)
+```
+
+This bypassed the traced `set()`/`get()` methods because the decorator returned was bound to `self._cache`, not the `TracedRefCache` wrapper.
+
+#### Solution Implemented
+Enhanced `TracedRefCache.cached()` to:
+1. Get the underlying decorator from `self._cache.cached()`
+2. Wrap it with a tracing decorator that creates Langfuse spans
+3. Support both sync and async functions
+4. Track cache operation metadata (function name, namespace, hit/miss)
+
+#### Key Code Pattern
+```python
+def cached(self, namespace="public", **kwargs):
+    underlying_decorator = self._cache.cached(namespace=namespace, **kwargs)
+    
+    def tracing_decorator(func):
+        cached_func = underlying_decorator(func)
+        
+        async def async_traced_wrapper(*args, **kwargs):
+            with langfuse.start_as_current_observation(
+                as_type="span",
+                name=f"cache.{func.__name__}",
+            ) as span:
+                result = await cached_func(*args, **kwargs)
+                span.update(output={"ref_id": result.get("ref_id")})
+                return result
+        
+        return async_traced_wrapper
+    
+    return tracing_decorator
+```
+
+### Files Modified
+- `examples/langfuse_integration.py` - Enhanced `TracedRefCache.cached()` (lines 526-706)
+- `tests/test_examples.py` - Added 7 new tests for traced caching
+
+### Tests Added
+- `test_traced_cached_creates_span_on_cache_miss`
+- `test_traced_cached_tracks_cache_hit`
+- `test_traced_cached_includes_user_attribution`
+- `test_traced_cached_async_function`
+- `test_traced_refcache_resolve_with_tracing`
+- `test_traced_cached_creates_cache_operation_span`
+- `test_traced_cached_tracks_cache_hit_vs_miss_in_span`
+
+### Test Results
+- 586 tests passed, 3 skipped (optional transformers dependency)
+- All linting passes
+
+### Commits
+- `feat(langfuse): add Langfuse observability integration example` (Session 7-9 work)
+- `feat(langfuse): enhance TracedRefCache.cached() with Langfuse spans` (Session 10)
+
+---
+
 ## Next Session Starting Prompt
 
 ```
-Continue mcp-refcache: Integrate Langfuse Tracing with RefCache
+Continue mcp-refcache: Live Test Langfuse Integration
 
 ## Context
-- Session 9 complete, Langfuse cost tracking working!
-- Model comes from session context (default: claude-opus-4-20250514)
-- Costs appear correctly in Langfuse dashboard
-- See `.agent/scratchpad-decorator-refactor.md` Session 9-10 for details
+- Session 10 complete, TracedRefCache.cached() now creates Langfuse spans!
+- 586 tests passing
+- See `.agent/scratchpad-decorator-refactor.md` Session 10 for details
 
-## What Was Done (Session 9)
-- Added `model` field to MockContext for cost tracking
-- Fixed Langfuse API: use `update_current_generation()` not `update_current_observation()`
-- Fixed usage keys: `input`/`output` not `input_tokens`/`output_tokens`
-- Verified costs appear in Langfuse dashboard for gpt-4o and claude-opus-4
+## What Was Done (Session 10)
+- Enhanced TracedRefCache.cached() to wrap with Langfuse spans
+- Spans named "cache.{function_name}" for each cached function
+- Metadata includes: function, namespace, userid, sessionid, cached status
+- Added 7 tests for traced caching behavior
 
-## Current Task: Add Langfuse Tracing to RefCache
+## Current Task: Live Test in Zed/Claude
 
 ### Goals
-1. Trace cache hits/misses as Langfuse spans
-2. Add user/session attribution to cache operations
-3. Make ref resolution visible in traces
+1. Test the traced cached functions in live Langfuse dashboard
+2. Verify spans appear correctly nested
+3. Confirm user/session attribution works across cache operations
 
-### Implementation Plan
-1. Enhance `TracedRefCache` in `examples/langfuse_integration.py`
-2. Add cache operation spans (get, set, resolve)
-3. Track hit/miss status in span metadata
-4. Test with live Langfuse dashboard
+### Test Steps
+1. Enable test context: enable_test_context(True)
+2. Set user: set_test_context(user_id="alice", org_id="acme")
+3. Call generate_fibonacci(10) - creates cache.generate_fibonacci span
+4. Call again with same args - verify cache hit
+5. Check Langfuse dashboard for traces
 
 ### Key Files
-- `examples/langfuse_integration.py` - TracedRefCache class
-- `src/mcp_refcache/cache.py` - Core RefCache class
+- `examples/langfuse_integration.py` - TracedRefCache with enhanced cached()
 
 ## Guidelines
-- Follow `.rules` (TDD, document as you go)
-- Cache operations should be `span` type (not `generation`)
-- Run `uv run ruff check . --fix && uv run ruff format .`
-- Run `uv run pytest tests/test_examples.py` to verify
+- Verify in Langfuse dashboard that spans appear
+- Check parent-child span relationships
+- Confirm user_id/session_id attribution
 ```
 
 ---

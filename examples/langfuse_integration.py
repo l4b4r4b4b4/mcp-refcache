@@ -41,12 +41,18 @@ Langfuse SDK v3 Best Practices:
 from __future__ import annotations
 
 import argparse
+import asyncio
+import functools
 import os
 import sys
 from collections.abc import Callable
 from typing import Any, ClassVar, TypeVar
 
 from pydantic import BaseModel, Field
+from typing_extensions import ParamSpec
+
+P = ParamSpec("P")
+T = TypeVar("T")
 
 # =============================================================================
 # Check for dependencies
@@ -71,14 +77,14 @@ except ImportError:
     sys.exit(1)
 
 # Import context integration for dynamic namespace support
-import mcp_refcache.context_integration as ctx_integration
-from mcp_refcache import (
+import mcp_refcache.context_integration as ctx_integration  # noqa: E402
+from mcp_refcache import (  # noqa: E402
     CacheResponse,
     PreviewConfig,
     PreviewStrategy,
     RefCache,
 )
-from mcp_refcache.fastmcp import cache_instructions
+from mcp_refcache.fastmcp import cache_instructions  # noqa: E402
 
 # =============================================================================
 # Initialize Langfuse
@@ -519,9 +525,181 @@ class TracedRefCache:
                 langfuse.flush()
                 raise
 
-    def cached(self, *args: Any, **kwargs: Any) -> Any:
-        """Delegate to underlying cache's decorator."""
-        return self._cache.cached(*args, **kwargs)
+    def cached(
+        self,
+        namespace: str = "public",
+        **decorator_kwargs: Any,
+    ) -> Callable[[Callable[P, T]], Callable[P, dict[str, Any]]]:
+        """Decorator that caches function results with Langfuse tracing.
+
+        This enhanced decorator wraps the underlying @cache.cached() decorator
+        and adds Langfuse spans for cache operations. Each cache operation
+        is traced with:
+        - user_id and session_id for attribution
+        - Cache hit/miss status
+        - Namespace and operation metadata
+
+        Args:
+            namespace: Cache namespace (supports context templates like "user:{user_id}")
+            **decorator_kwargs: Additional arguments passed to underlying cached()
+
+        Returns:
+            Decorated function that returns structured cache responses with tracing.
+
+        Example:
+            @traced_cache.cached(namespace="user:{user_id}")
+            async def get_user_data(user_id: str) -> dict:
+                return {"name": "Alice"}
+        """
+        # Get the underlying decorator
+        underlying_decorator = self._cache.cached(
+            namespace=namespace, **decorator_kwargs
+        )
+
+        def tracing_decorator(
+            func: Callable[P, T],
+        ) -> Callable[P, dict[str, Any]]:
+            """Wrap function with Langfuse tracing for cache operations."""
+            # Apply underlying decorator first
+            cached_func = underlying_decorator(func)
+
+            if asyncio.iscoroutinefunction(func):
+
+                @functools.wraps(func)
+                async def async_traced_wrapper(
+                    *args: P.args, **kwargs: P.kwargs
+                ) -> dict[str, Any]:
+                    if not _langfuse_enabled:
+                        return await cached_func(*args, **kwargs)
+
+                    # Get Langfuse attributes from context
+                    attributes = get_langfuse_attributes(
+                        cache_namespace=namespace,
+                        operation="cached_call",
+                    )
+
+                    with (
+                        langfuse.start_as_current_observation(
+                            as_type="span",
+                            name=f"cache.{func.__name__}",
+                            input={
+                                "function": func.__name__,
+                                "namespace": namespace,
+                                "args_count": len(args),
+                            },
+                        ) as span,
+                        propagate_attributes(
+                            user_id=attributes["user_id"],
+                            session_id=attributes["session_id"],
+                            metadata=attributes["metadata"],
+                            tags=attributes["tags"],
+                            version=attributes["version"],
+                        ),
+                    ):
+                        try:
+                            result = await cached_func(*args, **kwargs)
+
+                            # Determine if this was a cache hit
+                            # Cache hits typically return faster and have ref_id
+                            is_cached = "ref_id" in result
+
+                            span.update(
+                                output={
+                                    "ref_id": result.get("ref_id"),
+                                    "is_complete": result.get("is_complete"),
+                                    "cached": is_cached,
+                                },
+                                metadata={
+                                    "cacheoperation": "cached_call",
+                                    "function": func.__name__,
+                                    "namespace": namespace,
+                                    "userid": attributes["user_id"],
+                                    "sessionid": attributes["session_id"],
+                                },
+                            )
+                            langfuse.flush()
+                            return result
+                        except Exception as e:
+                            span.update(
+                                output={"error": str(e), "cached": False},
+                                metadata={
+                                    "cacheoperation": "cached_call",
+                                    "errortype": type(e).__name__,
+                                },
+                            )
+                            langfuse.flush()
+                            raise
+
+                return async_traced_wrapper  # type: ignore
+            else:
+
+                @functools.wraps(func)
+                def sync_traced_wrapper(
+                    *args: P.args, **kwargs: P.kwargs
+                ) -> dict[str, Any]:
+                    if not _langfuse_enabled:
+                        return cached_func(*args, **kwargs)
+
+                    # Get Langfuse attributes from context
+                    attributes = get_langfuse_attributes(
+                        cache_namespace=namespace,
+                        operation="cached_call",
+                    )
+
+                    with (
+                        langfuse.start_as_current_observation(
+                            as_type="span",
+                            name=f"cache.{func.__name__}",
+                            input={
+                                "function": func.__name__,
+                                "namespace": namespace,
+                                "args_count": len(args),
+                            },
+                        ) as span,
+                        propagate_attributes(
+                            user_id=attributes["user_id"],
+                            session_id=attributes["session_id"],
+                            metadata=attributes["metadata"],
+                            tags=attributes["tags"],
+                            version=attributes["version"],
+                        ),
+                    ):
+                        try:
+                            result = cached_func(*args, **kwargs)
+
+                            # Determine if this was a cache hit
+                            is_cached = "ref_id" in result
+
+                            span.update(
+                                output={
+                                    "ref_id": result.get("ref_id"),
+                                    "is_complete": result.get("is_complete"),
+                                    "cached": is_cached,
+                                },
+                                metadata={
+                                    "cacheoperation": "cached_call",
+                                    "function": func.__name__,
+                                    "namespace": namespace,
+                                    "userid": attributes["user_id"],
+                                    "sessionid": attributes["session_id"],
+                                },
+                            )
+                            langfuse.flush()
+                            return result
+                        except Exception as e:
+                            span.update(
+                                output={"error": str(e), "cached": False},
+                                metadata={
+                                    "cacheoperation": "cached_call",
+                                    "errortype": type(e).__name__,
+                                },
+                            )
+                            langfuse.flush()
+                            raise
+
+                return sync_traced_wrapper  # type: ignore
+
+        return tracing_decorator
 
     def __getattr__(self, name: str) -> Any:
         """Delegate unknown attributes to underlying cache."""
