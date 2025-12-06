@@ -1,108 +1,132 @@
 # mcp-refcache Development Scratchpad
 
-## Current Status: FastMCP Integration Example COMPLETE ✅
+## Current Status: v0.0.1 READY TO SHIP ✅
 
-**Session Date**: 2024-XX-XX (Priority 1 Task)
+**Last Updated**: Session 10 Complete
 
-### What Was Accomplished This Session
+### v0.0.1 Feature Checklist
 
-1. **Created `examples/mcp_server.py`** - Complete Scientific Calculator MCP server (~890 lines)
-   - 7 tools: calculate, generate_sequence, matrix_operation, store_secret, compute_with_secret, get_cached_result, list_cache_stats
-   - Demonstrates all RefCache features: caching, previews, pagination, access control, private computation
-   - Supports both stdio (Claude Desktop) and SSE (web/debug) transports
-   - Both sync and async tool implementations
+| Feature | Status | Tests |
+|---------|--------|-------|
+| Core RefCache class | ✅ Done | 586 tests |
+| Memory backend (thread-safe) | ✅ Done | TTL support |
+| Namespaces (public, session, user, custom) | ✅ Done | Full isolation |
+| Access control (Actor, Permission, ACLs) | ✅ Done | User/Agent/System |
+| Context limiting (token/char) | ✅ Done | tiktoken + HF |
+| Preview strategies (sample/paginate/truncate) | ✅ Done | PreviewGenerator |
+| EXECUTE permission (private compute) | ✅ Done | Blind computation |
+| `@cache.cached()` decorator | ✅ Done | Ref resolution |
+| FastMCP integration helpers | ✅ Done | `cache_instructions()` |
+| Langfuse observability | ✅ Done | TracedRefCache wrapper |
 
-2. **Created `examples/README.md`** - Comprehensive documentation
-   - Prerequisites and installation
-   - Running instructions (stdio and SSE modes)
-   - Claude Desktop configuration JSON
-   - Example prompts to try
-   - Architecture diagram
-   - Troubleshooting section
+**Test Results**: 586 passed, 3 skipped (optional transformers dep)
 
-3. **Created `tests/test_examples.py`** - 15 tests for examples
-   - Import verification
-   - RefCache integration tests
-   - Calculator logic tests (math context, expression validation)
-   - Sequence and matrix operation tests
-   - All tests pass (389 total, 8 skipped)
-
-4. **Created `src/mcp_refcache/fastmcp/` module** - Instruction helpers
-   - `instructions.py` - Comprehensive cache-aware instruction generators
-   - Covers: Response Types, Pagination, Reference Passing, Admin-only Cache Management
-   - Functions: `cache_instructions()`, `cached_tool_description()`, `cache_guide_prompt()`, `with_cache_docs()` decorator
-   - Ready for integration into MCP tools
-
-5. **Added FastMCP as git submodule** at `.external/fastmcp`
-   - Full source available for reference
-   - Helps align caching library with FastMCP patterns
-
-### Files Created/Modified
-- `examples/mcp_server.py` (NEW) - Scientific Calculator MCP
-- `examples/README.md` (NEW) - Example documentation
-- `tests/test_examples.py` (NEW) - Example tests
-- `src/mcp_refcache/fastmcp/__init__.py` (NEW) - FastMCP integration module
-- `src/mcp_refcache/fastmcp/instructions.py` (NEW) - Instruction generators
-- `.external/fastmcp/` (NEW) - FastMCP submodule
-- `.agent/tmp/` - Copied reference toolsets from fractal-agents
-
-### Test Results
-```
-389 passed, 8 skipped in 0.33s
-```
-All linting passes. Coverage at 89%.
+### NOT in v0.0.1 (Move to v0.0.2)
+- Disk persistence for memory backend
+- Reference metadata (tags, descriptions)
+- Redis/Valkey backend
+- Audit logging
 
 ---
 
-## Next Session: Priority Tasks
+## Tonight's Plan: MCP Integration + Cross-Server Caching
 
-### Priority 1: Update Example to Use Instruction Helpers
-The example `mcp_server.py` still uses manual instructions. Update to use:
+### Goal
+Integrate mcp-refcache with real MCP servers, then build toward cross-server caching with Valkey.
+
+### Step 1: README Cleanup (5 min)
+- Remove "disk persistence" claim from README (not implemented)
+- Ensure v0.0.1 claims match actual implementation
+
+### Step 2: Add MCP Submodules (5 min)
+```bash
+git submodule add https://github.com/l4b4r4b4b4/BundesMCP examples/BundesMCP
+git submodule add https://github.com/l4b4r4b4b4/OpenStreetMapMCP examples/OpenStreetMapMCP
+git submodule add https://github.com/l4b4r4b4b4/FinQuantMCP examples/FinQuantMCP
+```
+
+### Step 3: BundesMCP Integration (30-60 min)
+1. Add `mcp-refcache` as dependency
+2. Identify cacheable tools (API responses)
+3. Wrap with `@cache.cached()`
+4. Add `TracedRefCache` for Langfuse observability
+5. Test in Zed with live Langfuse dashboard
+
+### Step 4: Repeat for Other MCPs
+- OpenStreetMapMCP
+- FinQuantMCP
+
+### Step 5: Valkey Backend Skeleton (if time permits)
+- Create `src/mcp_refcache/backends/valkey.py`
+- Implement `CacheBackend` protocol for Redis/Valkey
+- Enable cross-server shared caching
+
+---
+
+## Langfuse Integration Summary (from Session 10)
+
+### Key Learnings
+
+**Cost Tracking Only for Real LLM Calls:**
+| Scenario | Cost Tracking? | Observation Type |
+|----------|---------------|------------------|
+| Pure computation (math, sequences) | ❌ No | `span` |
+| Cache operations | ❌ No | `span` |
+| Real LLM API call (OpenAI, Anthropic) | ✅ Yes | `generation` |
+
+**TracedRefCache Pattern:**
 ```python
-from mcp_refcache.fastmcp import cache_instructions, with_cache_docs
+from mcp_refcache import RefCache, PreviewConfig
+from examples.langfuse_integration import TracedRefCache
 
-mcp = FastMCP(
-    name="Scientific Calculator",
-    instructions=cache_instructions(),  # Use helper
-)
+# Create base cache
+base_cache = RefCache(name="my-cache", preview_config=PreviewConfig(max_size=100))
 
-@mcp.tool
-@with_cache_docs(returns_reference=True, supports_pagination=True)
-async def generate_sequence(...):
-    ...
+# Wrap with tracing
+cache = TracedRefCache(base_cache)
+
+# Use as normal - all operations traced to Langfuse
+@cache.cached(namespace="api_responses")
+async def fetch_data(query: str) -> dict:
+    return await api.get(query)
 ```
 
-### Priority 2: Add to Zed Settings for Live Testing
-Add calculator MCP to `.zed/settings.json`:
-```json
-"context_servers": {
-    "calculator": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/mcp-refcache", "python", "examples/mcp_server.py"]
-    }
-}
+**User/Session Attribution:**
+```python
+# Set context for tracing
+enable_test_context(True)
+set_test_context(user_id="alice", org_id="acme", session_id="sess-123")
+
+# All subsequent traces include user attribution
 ```
 
-### Priority 3: Create Cache Admin Toolset (Separate, Restricted)
-Create `src/mcp_refcache/fastmcp/admin_tools.py`:
-- `list_caches()` - Admin only
-- `list_references()` - Admin only  
-- `get_cache_stats()` - Admin only
-- `clear_cache()` - Admin only
-- Permission-gated to prevent agent access
-
-### Priority 4: LangGraph Test Harness (Optional)
-Create a LangGraph React agent that uses the calculator MCP for automated testing.
-
-### Priority 5: Separate MCP Repos
-For production MCPs (FinQuant, BundesMCP, etc.), create separate repos that:
-- `pip install mcp-refcache`
-- Import and configure RefCache
-- Have their own CI/CD
+### Files for Langfuse Integration
+- `examples/langfuse_integration.py` - Complete example with TracedRefCache
+- Requires: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` env vars
 
 ---
 
-## Key Insights from This Session
+## Previous Session Summary (Sessions 7-10)
+### Session 10: Langfuse + RefCache Integration ✅
+- Enhanced `TracedRefCache.cached()` with Langfuse spans
+- Removed fake cost tracking (no LLM calls = no costs)
+- Fixed return type annotations for cached functions
+- 586 tests passing
+
+### Sessions 7-9: Langfuse Observability ✅
+- Created `examples/langfuse_integration.py` with TracedRefCache
+- Added context-scoped testing tools
+- Implemented Langfuse SDK v3 patterns (propagate_attributes, observe)
+
+### Previous Sessions: Core Library ✅
+- Phase 1-5 complete: RefCache with full access control
+- Context limiting with token/char measurement
+- Preview strategies (sample, paginate, truncate)
+- FastMCP integration with `@cache.cached()` decorator
+
+---
+
+## Key Architecture Decisions
 
 ### FastMCP Tool Description Flow
 1. `@mcp.tool(description="...")` - Explicit description takes precedence
@@ -124,12 +148,19 @@ For production MCPs (FinQuant, BundesMCP, etc.), create separate repos that:
 
 ---
 
-## Reference: Files in `.agent/tmp/`
-Copied from fractal-agents for reference:
-- `math_toolset.py` - Full math MCP with caching
-- `time_toolset.py` - Time tools example
-- `cache_toolset.py` - Cache management tools
-- `crypto_toolset.py`, `geo_toolset.py`, `weather_toolset.py` - Other examples
+## Reference Files
+
+### Examples
+- `examples/mcp_server.py` - Scientific Calculator MCP (context-scoped caching)
+- `examples/langfuse_integration.py` - Langfuse observability example
+- `examples/README.md` - Example documentation
+
+### FastMCP Integration
+- `src/mcp_refcache/fastmcp/` - FastMCP helpers module
+- `src/mcp_refcache/fastmcp/instructions.py` - `cache_instructions()`, `with_cache_docs()`
+
+### Archived Reference
+- `.agent/tmp/` - Copied toolsets from fractal-agents for reference
 
 ---
 
@@ -553,15 +584,20 @@ public                          # Global, anyone can read
 
 ## Roadmap Reference
 
-### v0.0.1 (Current)
+### v0.0.1 (Current) ✅ COMPLETE
 - Core caching with RefCache class
-- Memory backend
+- Memory backend (thread-safe with TTL)
 - Namespaces and permissions
 - Context limiting (token/char + truncate/paginate/sample)
 - EXECUTE for private compute
+- `@cache.cached()` decorator with ref resolution
+- FastMCP integration helpers
+- Langfuse observability (TracedRefCache)
 
-### v0.0.2
-- Redis backend
+### v0.0.2 (Next)
+- Valkey/Redis backend for cross-server caching
+- Disk persistence for memory backend
+- Reference metadata (tags, descriptions)
 - Audit logging
 - Value transformations
 - Permission delegation
@@ -666,7 +702,57 @@ See bottom of this file for the codebox prompt to continue development.
 
 ## Next Session Starting Prompt
 
-### CURRENT PROMPT (Use This):
+### CURRENT PROMPT (Tonight's Work):
+
+```
+mcp-refcache: Real MCP Integration + Cross-Server Caching
+
+## Context
+- v0.0.1 READY: 586 tests, all core features complete
+- Langfuse integration working (TracedRefCache)
+- See `.agent/scratchpad.md` for full context
+
+## Tonight's Goals
+1. Clean up README for v0.0.1 accuracy
+2. Add BundesMCP, OpenStreetMapMCP, FinQuantMCP as submodules
+3. Integrate mcp-refcache into BundesMCP (caching + tracing)
+4. If time: Start Valkey backend skeleton
+
+## Step 1: README Cleanup (5 min)
+- Remove "disk persistence" claim (not implemented)
+- Verify all v0.0.1 feature claims are accurate
+
+## Step 2: Add Submodules (5 min)
+git submodule add https://github.com/l4b4r4b4b4/BundesMCP examples/BundesMCP
+git submodule add https://github.com/l4b4r4b4b4/OpenStreetMapMCP examples/OpenStreetMapMCP
+git submodule add https://github.com/l4b4r4b4b4/FinQuantMCP examples/FinQuantMCP
+
+## Step 3: BundesMCP Integration (30-60 min)
+1. Explore repo structure, identify cacheable tools
+2. Add mcp-refcache dependency
+3. Wrap API-calling tools with @cache.cached()
+4. Add TracedRefCache for Langfuse observability
+5. Test in Zed, verify traces in Langfuse dashboard
+
+## Step 4: Valkey Backend Skeleton (if time)
+- Create src/mcp_refcache/backends/valkey.py
+- Implement CacheBackend protocol
+- Enable cross-server shared caching
+
+## Key Files
+- examples/langfuse_integration.py - TracedRefCache pattern to copy
+- src/mcp_refcache/cache.py - @cache.cached() decorator
+- README.md - Needs cleanup for v0.0.1
+
+## Guidelines
+- Follow .rules (TDD, document as you go)
+- Run: uv run ruff check . --fix && uv run ruff format .
+- Run: uv run pytest tests/
+```
+
+---
+
+### PREVIOUS PROMPT (Archived):
 
 \`\`\`
 Continue mcp-refcache: FastMCP Integration Polish & Live Testing
