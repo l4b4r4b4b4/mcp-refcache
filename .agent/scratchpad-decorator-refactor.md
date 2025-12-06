@@ -326,6 +326,7 @@ This is intentional - all cached functions become MCP-ready automatically.
 
 ## Next Steps
 
+### Completed ✅
 1. ~~Update `tests/test_refcache.py` to expect structured responses~~ ✅
 2. ~~Add `tests/test_resolution.py` for resolution utilities~~ ✅
 3. ~~Run full test suite~~ ✅ (439 passed)
@@ -334,6 +335,31 @@ This is intentional - all cached functions become MCP-ready automatically.
 6. ~~Update example server to use new decorator~~ ✅
 7. ~~Live test with Zed/Claude~~ ✅
 8. ~~Fix FastMCP return type validation~~ ✅
-9. Add max recursion depth limit for circular ref protection
-10. Test with finquant-mcp to validate real-world usage
-11. Consider pagination UX improvements (paginate strategy vs sample)
+
+### High Priority (Security/Stability)
+9. **Max recursion depth limit** - Prevent infinite loops if ref A → ref B → ref A
+   - Add `max_depth` parameter to resolution (default: 10)
+   - Track visited ref_ids to detect cycles
+   - Raise clear error on cycle detection or depth exceeded
+
+10. **Opaque error messages** - Security: same error for not-found, expired, permission-denied
+    - Wrap resolution in try/except catching KeyError AND PermissionError
+    - Return generic "Invalid or inaccessible reference" message
+    - Prevents enumeration attacks
+
+### Medium Priority (Polish)
+11. **Pagination UX** - The `sample` strategy doesn't respond to page params
+    - Consider auto-switching to `paginate` when page is specified
+    - Or document current behavior more clearly
+
+12. **Async ref resolution tests** - Current tests are sync only
+    - Add async function tests for resolution
+
+### Lower Priority (Nice to Have)
+13. **Short ref_id prefix matching** - Like git/docker (`calculator:861a` instead of full hash)
+    - Accept short prefixes, expand internally
+    - Handle ambiguity with clear errors
+
+14. **Character-based sizing example** - Second example server for comparison
+
+15. **Test with finquant-mcp** - Real-world validation with actual financial data server

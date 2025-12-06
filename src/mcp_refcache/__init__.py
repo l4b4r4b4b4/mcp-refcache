@@ -64,6 +64,7 @@ from mcp_refcache.preview import (
     get_default_generator,
 )
 from mcp_refcache.resolution import (
+    CircularReferenceError,
     RefResolver,
     ResolutionResult,
     is_ref_id,
@@ -89,6 +90,7 @@ __all__ = [
     "CacheResponse",
     "CharacterFallback",
     "CharacterMeasurer",
+    "CircularReferenceError",
     "DefaultActor",
     "DefaultNamespaceResolver",
     "DefaultPermissionChecker",

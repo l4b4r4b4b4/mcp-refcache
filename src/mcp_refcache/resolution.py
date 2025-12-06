@@ -7,6 +7,7 @@ between MCP tools.
 Key features:
 - Pattern matching for ref_id strings (e.g., "cachename:hexhash")
 - Deep recursive resolution through nested dicts, lists, and tuples
+- Cycle detection to prevent infinite loops
 - Error handling for missing/expired references
 """
 
@@ -23,6 +24,16 @@ if TYPE_CHECKING:
 # Cache name: alphanumeric, hyphens, underscores
 # Hash: hexadecimal characters
 REF_ID_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*:[a-f0-9]{8,}$")
+
+
+class CircularReferenceError(Exception):
+    """Raised when a circular reference is detected during resolution."""
+
+    def __init__(self, ref_id: str, chain: list[str]) -> None:
+        self.ref_id = ref_id
+        self.chain = chain
+        chain_str = " -> ".join([*chain, ref_id])
+        super().__init__(f"Circular reference detected: {chain_str}")
 
 
 def is_ref_id(value: Any) -> bool:
@@ -124,7 +135,9 @@ class RefResolver:
         self._actor = actor
         self._fail_on_missing = fail_on_missing
 
-    def resolve(self, value: Any) -> ResolutionResult:
+    def resolve(
+        self, value: Any, *, _visiting: set[str] | None = None
+    ) -> ResolutionResult:
         """Resolve all ref_ids in a value structure.
 
         Recursively walks through the input, resolving any ref_id strings
@@ -139,11 +152,13 @@ class RefResolver:
         Raises:
             KeyError: If fail_on_missing is True and a ref_id is not found.
             PermissionError: If the actor lacks permission to resolve a ref.
+            CircularReferenceError: If a circular reference is detected.
         """
         resolved_refs: list[str] = []
         errors: dict[str, str] = {}
+        visiting = _visiting if _visiting is not None else set()
 
-        resolved_value = self._resolve_recursive(value, resolved_refs, errors)
+        resolved_value = self._resolve_recursive(value, resolved_refs, errors, visiting)
 
         return ResolutionResult(
             value=resolved_value,
@@ -157,6 +172,7 @@ class RefResolver:
         value: Any,
         resolved_refs: list[str],
         errors: dict[str, str],
+        visiting: set[str],
     ) -> Any:
         """Recursively resolve ref_ids in a value.
 
@@ -164,29 +180,32 @@ class RefResolver:
             value: The value to resolve.
             resolved_refs: List to track resolved ref_ids.
             errors: Dict to track resolution errors.
+            visiting: Set of ref_ids currently being resolved (for cycle detection).
 
         Returns:
             The resolved value.
         """
         # Check if this is a ref_id string
         if is_ref_id(value):
-            return self._resolve_ref(value, resolved_refs, errors)
+            return self._resolve_ref(value, resolved_refs, errors, visiting)
 
         # Recursively handle containers
         if isinstance(value, dict):
             return {
-                k: self._resolve_recursive(v, resolved_refs, errors)
+                k: self._resolve_recursive(v, resolved_refs, errors, visiting)
                 for k, v in value.items()
             }
 
         if isinstance(value, list):
             return [
-                self._resolve_recursive(item, resolved_refs, errors) for item in value
+                self._resolve_recursive(item, resolved_refs, errors, visiting)
+                for item in value
             ]
 
         if isinstance(value, tuple):
             return tuple(
-                self._resolve_recursive(item, resolved_refs, errors) for item in value
+                self._resolve_recursive(item, resolved_refs, errors, visiting)
+                for item in value
             )
 
         # Non-container, non-ref value - return as-is
@@ -197,6 +216,7 @@ class RefResolver:
         ref_id: str,
         resolved_refs: list[str],
         errors: dict[str, str],
+        visiting: set[str],
     ) -> Any:
         """Resolve a single ref_id.
 
@@ -204,14 +224,33 @@ class RefResolver:
             ref_id: The ref_id string to resolve.
             resolved_refs: List to track resolved ref_ids.
             errors: Dict to track resolution errors.
+            visiting: Set of ref_ids currently being resolved (for cycle detection).
 
         Returns:
             The resolved value, or the original ref_id if resolution failed
             and fail_on_missing is False.
+
+        Raises:
+            CircularReferenceError: If this ref_id is already being resolved.
         """
+        # Check for circular reference
+        if ref_id in visiting:
+            raise CircularReferenceError(ref_id, list(visiting))
+
         try:
+            # Mark as visiting before resolving
+            visiting.add(ref_id)
+
             resolved_value = self._cache.resolve(ref_id, actor=self._actor)
             resolved_refs.append(ref_id)
+
+            # If resolved value contains more ref_ids, resolve them too
+            # (with cycle detection still active)
+            if self._contains_ref_ids(resolved_value):
+                resolved_value = self._resolve_recursive(
+                    resolved_value, resolved_refs, errors, visiting
+                )
+
             return resolved_value
         except KeyError as error:
             if self._fail_on_missing:
@@ -223,6 +262,19 @@ class RefResolver:
                 raise
             errors[ref_id] = f"Permission denied: {error}"
             return ref_id
+        finally:
+            # Remove from visiting set when done (whether success or failure)
+            visiting.discard(ref_id)
+
+    def _contains_ref_ids(self, value: Any) -> bool:
+        """Check if a value contains any ref_ids (for nested resolution)."""
+        if is_ref_id(value):
+            return True
+        if isinstance(value, dict):
+            return any(self._contains_ref_ids(v) for v in value.values())
+        if isinstance(value, (list, tuple)):
+            return any(self._contains_ref_ids(item) for item in value)
+        return False
 
 
 def resolve_refs(

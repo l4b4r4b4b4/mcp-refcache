@@ -13,6 +13,7 @@ import pytest
 
 from mcp_refcache import AccessPolicy, Permission, RefCache
 from mcp_refcache.resolution import (
+    CircularReferenceError,
     RefResolver,
     ResolutionResult,
     is_ref_id,
@@ -372,6 +373,98 @@ class TestResolveArgsAndKwargs:
         assert kwargs_result.success
         assert args_result.value == ()
         assert kwargs_result.value == {}
+
+
+class TestCircularReferenceDetection:
+    """Tests for circular reference detection."""
+
+    @pytest.fixture
+    def cache(self) -> RefCache:
+        """Create a fresh RefCache for testing."""
+        return RefCache(name="test")
+
+    def test_self_referencing_value_detected(self, cache: RefCache) -> None:
+        """Test that a value containing its own ref_id raises CircularReferenceError."""
+        # Store a value first to get a ref_id
+        ref = cache.set("data", [1, 2, 3])
+
+        # Now update the value to contain its own ref_id (simulating circular ref)
+        # We need to manually create this scenario by storing a ref that points to itself
+        cache._backend._storage[ref.ref_id].value = {"self": ref.ref_id}
+
+        resolver = RefResolver(cache)
+        with pytest.raises(CircularReferenceError) as exc_info:
+            resolver.resolve(ref.ref_id)
+
+        assert ref.ref_id in str(exc_info.value)
+        assert "Circular reference detected" in str(exc_info.value)
+
+    def test_indirect_circular_reference_detected(self, cache: RefCache) -> None:
+        """Test that A -> B -> A circular references are detected."""
+        # Create ref_a first with placeholder
+        ref_a = cache.set("a", {"placeholder": True})
+
+        # Create ref_b pointing to ref_a
+        ref_b = cache.set("b", {"next": ref_a.ref_id})
+
+        # Update ref_a to point to ref_b (creating cycle)
+        cache._backend._storage[ref_a.ref_id].value = {"next": ref_b.ref_id}
+
+        resolver = RefResolver(cache)
+        with pytest.raises(CircularReferenceError) as exc_info:
+            resolver.resolve(ref_a.ref_id)
+
+        # Should show the chain in the error
+        assert "Circular reference detected" in str(exc_info.value)
+
+    def test_three_level_circular_reference_detected(self, cache: RefCache) -> None:
+        """Test that A -> B -> C -> A circular references are detected."""
+        ref_a = cache.set("a", {"placeholder": True})
+        ref_b = cache.set("b", {"placeholder": True})
+        ref_c = cache.set("c", {"next": ref_a.ref_id})  # C points to A
+
+        # Update A -> B and B -> C
+        cache._backend._storage[ref_a.ref_id].value = {"next": ref_b.ref_id}
+        cache._backend._storage[ref_b.ref_id].value = {"next": ref_c.ref_id}
+
+        resolver = RefResolver(cache)
+        with pytest.raises(CircularReferenceError) as exc_info:
+            resolver.resolve(ref_a.ref_id)
+
+        assert "Circular reference detected" in str(exc_info.value)
+
+    def test_no_false_positive_for_same_ref_in_siblings(self, cache: RefCache) -> None:
+        """Test that same ref_id in sibling positions doesn't trigger false positive."""
+        ref_data = cache.set("data", [100, 200, 300])
+
+        # Same ref_id used multiple times in parallel (not circular)
+        structure = {
+            "first": ref_data.ref_id,
+            "second": ref_data.ref_id,
+            "nested": {"also": ref_data.ref_id},
+        }
+
+        resolver = RefResolver(cache)
+        result = resolver.resolve(structure)
+
+        # Should resolve successfully - no cycle here
+        assert result.success
+        assert result.value["first"] == [100, 200, 300]
+        assert result.value["second"] == [100, 200, 300]
+        assert result.value["nested"]["also"] == [100, 200, 300]
+
+    def test_circular_reference_error_contains_chain(self, cache: RefCache) -> None:
+        """Test that CircularReferenceError includes the reference chain."""
+        ref = cache.set("self_ref", {"placeholder": True})
+        cache._backend._storage[ref.ref_id].value = {"loop": ref.ref_id}
+
+        resolver = RefResolver(cache)
+        with pytest.raises(CircularReferenceError) as exc_info:
+            resolver.resolve(ref.ref_id)
+
+        error = exc_info.value
+        assert error.ref_id == ref.ref_id
+        assert ref.ref_id in error.chain
 
 
 class TestSecurityConsiderations:
