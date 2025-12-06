@@ -961,17 +961,21 @@ def calculate(expression: str) -> dict[str, Any]:
 @mcp.tool
 @observe(name="generate_fibonacci")
 @cache.cached(namespace="sequences", max_size=50)
-async def generate_fibonacci(count: int = 20) -> list[int]:
+async def generate_fibonacci(count: int = 20) -> dict[str, Any]:
     """Generate Fibonacci sequence with caching and Langfuse tracing.
 
     The result is cached and traced with full context propagation.
     Langfuse traces include user_id, session_id, org_id for filtering.
 
+    Note: This function returns a cache response dict, not a raw list.
+    Cost tracking is not available for cached functions (only for generation-type
+    observations like `calculate`). The caching benefit outweighs per-call cost tracking.
+
     Args:
         count: Number of Fibonacci numbers to generate (1-1000).
 
     Returns:
-        List of Fibonacci numbers.
+        Cache response dict with ref_id, value/preview, and pagination info.
 
     **Caching Behavior:**
     - Any input parameter can accept a ref_id from a previous tool call
@@ -1008,14 +1012,18 @@ async def generate_fibonacci(count: int = 20) -> list[int]:
 @mcp.tool
 @observe(name="generate_primes")
 @cache.cached(namespace="sequences", max_size=50)
-async def generate_primes(count: int = 20) -> list[int]:
+async def generate_primes(count: int = 20) -> dict[str, Any]:
     """Generate prime numbers with caching and Langfuse tracing.
+
+    Note: This function returns a cache response dict, not a raw list.
+    Cost tracking is not available for cached functions (only for generation-type
+    observations like `calculate`). The caching benefit outweighs per-call cost tracking.
 
     Args:
         count: Number of prime numbers to generate (1-1000).
 
     Returns:
-        List of prime numbers.
+        Cache response dict with ref_id, value/preview, and pagination info.
 
     **Caching Behavior:**
     - Any input parameter can accept a ref_id from a previous tool call
