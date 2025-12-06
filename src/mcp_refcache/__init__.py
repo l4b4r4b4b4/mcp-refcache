@@ -40,6 +40,14 @@ from mcp_refcache.context import (
     get_default_measurer,
     get_default_tokenizer,
 )
+from mcp_refcache.context_integration import (
+    DEFAULT_FALLBACKS,
+    build_context_scoped_policy,
+    derive_actor_from_context,
+    expand_template,
+    get_context_values,
+    try_get_fastmcp_context,
+)
 from mcp_refcache.models import (
     CacheReference,
     CacheResponse,
@@ -63,14 +71,6 @@ from mcp_refcache.preview import (
     SampleGenerator,
     TruncateGenerator,
     get_default_generator,
-)
-from mcp_refcache.context_integration import (
-    DEFAULT_FALLBACKS,
-    build_context_scoped_policy,
-    derive_actor_from_context,
-    expand_template,
-    get_context_values,
-    try_get_fastmcp_context,
 )
 from mcp_refcache.resolution import (
     CircularReferenceError,

@@ -10,7 +10,7 @@ Refactor the `@cache.cached()` decorator to provide full MCP tool integration wi
 
 ---
 
-## Current Status: Session 4 Complete ✅
+## Current Status: Session 7 Complete ✅
 
 ### Completed ✅
 - [x] Created `src/mcp_refcache/resolution.py` with ref_id detection and resolution utilities
@@ -50,10 +50,12 @@ Refactor the `@cache.cached()` decorator to provide full MCP tool integration wi
 - [x] **Session 4**: Hierarchical max_size feature with documentation injection (499 tests)
 - [x] **Session 5**: Research complete on FastMCP Context integration
 - [x] **Session 6**: Context-scoped caching implementation (569 tests)
+- [x] **Session 7**: Langfuse user_id/session_id/metadata propagation (579 tests)
 
 ### TODO 📋
 - [ ] Consider short ref_id prefix matching (like git/docker) - see discussion below
 - [ ] Create a second example with character-based sizing for comparison
+- [ ] Live test Langfuse integration with real Langfuse credentials
 
 ---
 
@@ -1084,60 +1086,557 @@ async def set_test_context(user_id: str, org_id: str = "default") -> dict:
 5. Call `get_user_data(key="profile")` - should be cache MISS (different namespace)
 6. Verify Langfuse traces show the operations
 
+## Session 7: Testable Example + Langfuse Integration (IN PROGRESS)
+
+### Completed ✅
+
+#### Task 1: Context-Scoped Testing Tools
+Added to `examples/mcp_server.py`:
+
+1. **MockContext class**: Simulates FastMCP Context with:
+   - `session_id` property
+   - `get_state(key)` method for identity values
+   - Class-level state storage (shared across instances)
+   - `set_state()`, `set_session_id()`, `reset()` class methods
+
+2. **Test context tools**:
+   - `enable_test_context(enabled: bool)` - Enable/disable mock context mode
+   - `set_test_context(user_id, org_id, session_id, agent_id)` - Set identity values
+   - `reset_test_context()` - Reset to default demo values
+
+3. **Context-scoped example tools**:
+   - `get_user_profile(include_preferences)` - Demo with `namespace_template="org:{org_id}:user:{user_id}"`
+   - `store_user_data(key, value)` - Demo with `namespace_template="user:{user_id}:data"`
+
+4. **Tests added** to `tests/test_examples.py`:
+   - `TestContextScopedCaching` class with 4 tests
+   - `TestLangfuseIntegration` class with 2 tests
+   - All 21 tests in test_examples.py passing
+
+#### Task 2: Langfuse Integration Example
+Created `examples/langfuse_integration.py` with basic tracing.
+
+**Current implementation**:
+- `TracedRefCache` wrapper class that traces cache.set/get/resolve operations
+- Uses `@observe()` decorator on tools
+- Uses `langfuse.start_as_current_observation()` for cache operation spans
+- Records cache hits/misses in span metadata
+
+### Langfuse Enhancement Implemented (Needs Debugging) ⚠️
+
+**Implementation complete** but traces NOT appearing in Langfuse dashboard during live testing.
+
+**Implementation details**:
+
+1. **Added `get_langfuse_attributes()` helper function**:
+   - Extracts `user_id`, `session_id` from MockContext/FastMCP
+   - Builds `metadata` dict with alphanumeric keys (orgid, agentid, cachenamespace, operation)
+   - Creates `tags` list for filtering (mcprefcache, cacheset, testmode, etc.)
+   - Truncates all values to ≤200 characters (Langfuse requirement)
+
+2. **Updated `TracedRefCache` class**:
+   - `set()`, `get()`, `resolve()` now use `propagate_attributes()` context manager
+   - Combined with `langfuse.start_as_current_observation()` using parenthesized `with` statement
+   - All child spans inherit user_id, session_id, metadata, tags, version
+
+3. **Added context management tools**:
+   - `enable_test_context(enabled)` - Enable/disable mock context mode
+   - `set_test_context(user_id, org_id, session_id, agent_id)` - Set identity values
+   - `reset_test_context()` - Reset to default demo values
+
+4. **Updated tool implementations**:
+   - `calculate()`, `generate_fibonacci()`, `generate_primes()`, `get_cached_result()` 
+   - All use `propagate_attributes()` early in execution
+   - Return values include `traced_user` and `traced_session` for verification
+
+5. **Added langfuse to dependencies**:
+   - Added to `[project.optional-dependencies].langfuse` for optional install
+   - Added to `[dependency-groups].dev` for testing
+
+### Files Modified This Session
+- `examples/langfuse_integration.py` - Complete rewrite with context propagation (~1050 lines)
+- `tests/test_examples.py` - Added 4 new Langfuse tests (total 25 tests)
+- `pyproject.toml` - Added langfuse to optional-dependencies and dev group
+
+### Test Results
+```
+tests/test_examples.py: 25 passed
+Full test suite: 579 passed, 3 skipped
+```
+
+### Live Testing Issue ⚠️
+
+**Problem**: Traces are NOT appearing in Langfuse dashboard despite:
+- `langfuse_enabled: true` in responses
+- `public_key_set: true`, `secret_key_set: true`
+- `traced_user` and `traced_session` appearing in tool responses
+- Added `langfuse.flush()` calls after each operation
+
+**Debugging needed**:
+1. Verify Langfuse client is actually authenticating (no silent auth failures)
+2. Check if `get_client()` returns a valid client or a no-op stub
+3. Test Langfuse directly outside MCP server context
+4. Check Langfuse SDK logs for errors
+5. Verify the project in Langfuse dashboard matches the API keys
+
+**Test command to try**:
+```bash
+uv run python -c "
+from langfuse import get_client
+import os
+
+os.environ['LANGFUSE_PUBLIC_KEY'] = 'pk-lf-...'
+os.environ['LANGFUSE_SECRET_KEY'] = 'sk-lf-...'
+os.environ['LANGFUSE_HOST'] = 'https://cloud.langfuse.com'
+
+client = get_client()
+with client.start_as_current_observation(as_type='span', name='test-trace') as span:
+    span.update(output={'test': 'hello'})
+client.flush()
+print('Check Langfuse dashboard for test-trace')
+"
+```
+
+### Key Langfuse SDK v3 Pattern Used
+```python
+from langfuse import get_client, propagate_attributes
+
+langfuse = get_client()
+
+# Combined context managers (Python 3.10+ parenthesized with)
+with (
+    langfuse.start_as_current_observation(as_type="span", name="cache.set") as span,
+    propagate_attributes(
+        user_id=attributes["user_id"],
+        session_id=attributes["session_id"],
+        metadata=attributes["metadata"],
+        tags=attributes["tags"],
+        version=attributes["version"],
+    ),
+):
+    # All child spans inherit these attributes
+    result = cache.set(...)
+```
+
+---
+
+## Session 8: Debug Langfuse Integration ✅ COMPLETE
+
+### Problem Identified & Fixed
+
+**Root Cause:** Decorator order was wrong!
+
+```python
+# WRONG - @observe wraps FunctionTool object, not the function
+@observe(name="calculate")
+@mcp.tool
+def calculate(expression: str) -> dict:
+    ...
+
+# CORRECT - @mcp.tool wraps the observed function
+@mcp.tool
+@observe(name="calculate")
+def calculate(expression: str) -> dict:
+    ...
+```
+
+When decorators are stacked, they're applied **bottom-up**:
+1. `@mcp.tool` was applied first, returning a `FunctionTool` object
+2. `@observe` then tried to wrap that object instead of the actual function
+3. Result: No traces created!
+
+### Debugging Process
+1. Tested Langfuse client directly in terminal → **Traces appeared!**
+2. HTTP POST to `/api/public/otel/v1/traces` returned 200
+3. Confirmed SDK was working correctly outside MCP context
+4. Identified that `@observe` decorator wasn't being applied to actual function
+5. Fixed decorator order in all tools
+
+### Files Modified
+- `examples/langfuse_integration.py` - Fixed decorator order for:
+  - `calculate()` 
+  - `generate_fibonacci()`
+  - `generate_primes()`
+  - `get_cached_result()`
+
+### Live Testing Results ✅
+After fix, traces appear in Langfuse dashboard with:
+- **Users visible:** `alice`, `anonymous`, `debug-user-lukes`, `test-user`
+- **Session tracking:** Working correctly
+- **Context propagation:** `user_id`, `session_id` correctly attributed
+- **Trace count:** 2 traces per user in test
+
+### Correct Decorator Order Pattern
+```python
+@mcp.tool                           # OUTERMOST - registers with FastMCP
+@observe(name="tool_name")          # Creates Langfuse trace
+@cache.cached(namespace="ns")       # INNERMOST - caching (optional)
+async def my_tool(...):
+    ...
+```
+
+---
+
+## Session 9: LLM Cost Tracking (PLANNED)
+
+### Goals
+1. Add LLM-based tools to demonstrate cost tracking in Langfuse
+2. Track token usage for billing/invoicing purposes
+3. Support Claude Opus 4.5 Preview model (current chat model)
+
+### Langfuse Cost Tracking Requirements
+For costs to appear, traces need:
+- `model` - Model identifier (e.g., `claude-3-opus-20240229`)
+- `input_tokens` / `output_tokens` / `total_tokens` - Usage counts
+- Use `generation` observation type instead of `span`
+
+### Implementation Plan
+
+#### Option A: Mock LLM Usage (For Demo)
+Create a tool that simulates LLM calls with realistic token counts:
+```python
+@mcp.tool
+@observe(as_type="generation")
+def ask_llm(prompt: str) -> str:
+    # Simulate LLM response
+    response = f"This is a simulated response to: {prompt}"
+    
+    # Manually set usage for cost tracking
+    langfuse.update_current_observation(
+        model="claude-3-opus-20240229",
+        usage={
+            "input_tokens": len(prompt.split()) * 1.3,  # Estimate
+            "output_tokens": len(response.split()) * 1.3,
+        }
+    )
+    return response
+```
+
+#### Option B: Real LLM Integration
+Add Anthropic SDK and make actual API calls:
+```python
+import anthropic
+
+client = anthropic.Anthropic()
+
+@mcp.tool
+@observe(as_type="generation")
+def ask_claude(prompt: str, model: str = "claude-3-opus-20240229") -> str:
+    response = client.messages.create(
+        model=model,
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    # Langfuse auto-captures usage from Anthropic response
+    return response.content[0].text
+```
+
+### Supported Models for Invoicing
+- `claude-3-opus-20240229` (Claude Opus 4.5 Preview)
+- `claude-3-sonnet-20240229`
+- `claude-3-haiku-20240307`
+- `gpt-4-turbo`
+- `gpt-4o`
+- `gpt-3.5-turbo`
+
+### Files to Modify
+- `examples/langfuse_integration.py` - Add LLM tools
+- `pyproject.toml` - Add `anthropic` to optional dependencies
+- `.zed/settings.json` - Add `ANTHROPIC_API_KEY` env var
+
+### Test Plan
+1. Call LLM tool from Zed
+2. Verify trace appears with `model` and usage
+3. Check Langfuse dashboard shows cost calculation
+4. Verify user-level cost aggregation works
+
+---
+
+## Research Findings: MCP Cost Tracking
+
+### Key Discovery: MCP Trace Context Propagation
+
+From Langfuse docs on MCP Tracing:
+- MCP clients and servers produce **separate traces by default**
+- Can link traces using MCP's `_meta` field with W3C Trace Context
+- The **calling agent (Claude, etc.) creates the parent trace** with model info
+- MCP tool calls are **child spans** that inherit from parent
+
+### The Real Problem
+
+The model information (e.g., `claude-sonnet-4-20250514`) is known by the **MCP client** 
+(Zed/Claude), NOT the MCP server (our tools). Our tools don't know which model called them!
+
+### Langfuse Cost Tracking Architecture
+
+From Langfuse docs:
+1. **Costs require `generation` type observations** with `model` and `usage_details`
+2. **Langfuse has built-in model pricing** for OpenAI, Anthropic, Google models
+3. **Usage can be ingested OR inferred** (inferred uses tokenizers)
+4. **Custom models** can be defined in Langfuse Project Settings > Models
+
+### Solution Options for MCP Tools
+
+#### Option 1: Propagate Model via MCP `_meta` Field (Recommended)
+The MCP client should pass model info in the tool call's `_meta`:
+```python
+# Client side (Zed/Claude integration)
+tool_call = {
+    "name": "calculate",
+    "arguments": {"expression": "2+2"},
+    "_meta": {
+        "model": "claude-sonnet-4-20250514",
+        "trace_context": "...",  # W3C format
+    }
+}
+
+# Server side (our MCP tool)
+@mcp.tool
+@observe(as_type="generation")
+def calculate(expression: str, _meta: dict = None):
+    model = _meta.get("model") if _meta else os.getenv("DEFAULT_MODEL")
+    langfuse.update_current_observation(model=model, ...)
+```
+
+#### Option 2: Environment Variable Default
+Set `LANGFUSE_DEFAULT_MODEL` in MCP server config:
+```json
+{
+  "langfuse-calculator": {
+    "env": {
+      "LANGFUSE_DEFAULT_MODEL": "claude-sonnet-4-20250514"
+    }
+  }
+}
+```
+
+#### Option 3: Attribute Propagation from Parent Trace
+If MCP client propagates trace context, the model info may already be in parent span.
+Use Langfuse's trace linking to inherit model from parent.
+
+### Langfuse MCP Tracing Example
+
+From langfuse-examples repository (applications/mcp-tracing):
+- Shows complete implementation of trace context propagation
+- Uses W3C Trace Context format in `_meta` field
+- Links client and server traces into single unified trace
+
+### Next Steps for Implementation
+
+1. **Check if Zed passes `_meta` to MCP tools** - Inspect actual tool call payloads
+2. **Implement environment variable fallback** - Simple, works now
+3. **Document proper MCP client integration** - For full cost tracking
+4. **Consider using AnthropicInstrumentor** - Auto-captures usage from real API calls
+
+### Code Pattern for MCP Tool with Cost Tracking
+
+```python
+import os
+from langfuse import observe, get_client, propagate_attributes
+
+langfuse = get_client()
+DEFAULT_MODEL = os.getenv("LANGFUSE_DEFAULT_MODEL", "claude-sonnet-4-20250514")
+
+@mcp.tool
+@observe(name="calculate", as_type="generation", capture_input=True, capture_output=True)
+def calculate(expression: str) -> dict[str, Any]:
+    """Tool with cost tracking."""
+    
+    # Get model from context or environment
+    # In future: extract from _meta if MCP client provides it
+    model = DEFAULT_MODEL
+    
+    # Get Langfuse attributes for user attribution
+    attributes = get_langfuse_attributes(operation="calculate")
+    
+    with propagate_attributes(
+        user_id=attributes["user_id"],
+        session_id=attributes["session_id"],
+        metadata=attributes["metadata"],
+    ):
+        # Do the work
+        result = eval(expression, {"__builtins__": {}}, safe_context)
+        
+        # Estimate token usage (or get from actual LLM response)
+        input_tokens = len(expression) * 2  # Rough estimate
+        output_tokens = len(str(result)) * 2
+        
+        # Update generation with model and usage for cost tracking
+        langfuse.update_current_observation(
+            model=model,
+            usage_details={
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            },
+        )
+        
+        langfuse.flush()
+        return {"result": result, "model": model}
+```
+
+---
+
+## Session 9: Model from Session Context ✅ COMPLETE
+
+### Problem Statement
+The previous implementation got the model from an environment variable:
+```python
+model = os.getenv("LANGFUSE_MODEL", "claude-sonnet-4-20250514")
+```
+
+This is wrong because:
+1. The model should come from session context, not env vars
+2. The `agent_id` field was being conflated with the model name
+3. Different sessions/users may use different models
+
+### Solution Implemented
+Added a dedicated `model` field to the session context:
+
+1. **Added `model` to MockContext._state** - Default: `claude-sonnet-4-20250514`
+2. **Updated `get_langfuse_attributes()`** - Returns `model` in attributes dict
+3. **Updated `set_test_context()`** - Accepts `model` parameter
+4. **Updated `calculate()`** - Gets model from `attributes["model"]`
+
+### Files Modified
+- `examples/langfuse_integration.py` - Added model to context and attributes
+- `tests/test_examples.py` - Added tests for model field
+
+### Code Pattern (Final)
+```python
+@mcp.tool
+@observe(name="calculate", as_type="generation", capture_input=True, capture_output=True)
+def calculate(expression: str) -> dict[str, Any]:
+    # Model comes from session context for accurate cost tracking
+    attributes = get_langfuse_attributes(operation="calculate")
+    model = attributes["model"]  # From context, not env var!
+    
+    # ... do work ...
+    
+    # Use update_current_generation (not update_current_observation!)
+    langfuse.update_current_generation(
+        model=model,
+        usage_details={"input": X, "output": Y},  # Note: "input"/"output" not "input_tokens"/"output_tokens"
+    )
+```
+
+### Test Results
+- All 579 tests pass (3 skipped for optional transformers)
+- New tests verify model field in MockContext and get_langfuse_attributes
+
+### How to Test in Zed/Claude
+```
+1. enable_test_context(true)
+2. set_test_context(user_id="alice", model="gpt-4o")
+3. calculate("2 + 2")
+4. Check Langfuse dashboard - should show gpt-4o as model with costs
+```
+
+### Live Testing Results ✅
+- Tested with `gpt-4o` model → costs tracked correctly
+- Tested with `claude-opus-4-20250514` model → costs tracked correctly
+- User attribution works (cost-test-alice, cost-test-bob visible in Langfuse)
+- Default model updated to `claude-opus-4-20250514` to match actual Zed setup
+
+### Bug Fixes Applied
+1. Changed `langfuse.update_current_observation()` → `langfuse.update_current_generation()` (correct SDK v3 method)
+2. Changed usage keys from `input_tokens`/`output_tokens` → `input`/`output` (Langfuse expected format)
+
+---
+
+## Session 10: Langfuse + RefCache Integration (PLANNED)
+
+### Goals
+1. Add Langfuse tracing to the `@cache.cached()` decorator
+2. Track cache hits/misses as spans
+3. Enable cost attribution for cache operations by user/session
+
+### Key Integration Points
+
+#### 1. TracedRefCache Enhancement
+The `TracedRefCache` wrapper already exists but needs:
+- Cache hit/miss tracking as spans
+- User/session attribution from context
+- Ref resolution tracing
+
+#### 2. @cache.cached() Decorator Tracing
+Options to consider:
+- **Option A**: Add `trace=True` parameter to decorator
+- **Option B**: Auto-detect Langfuse availability and trace if present
+- **Option C**: Separate `@traced_cached()` decorator
+
+#### 3. Cache Operation Spans
+```python
+@cache.cached(namespace="user:{user_id}", trace=True)
+async def get_user_data(user_id: str) -> dict:
+    # Langfuse will show:
+    # - SPAN: cache_lookup (hit/miss)
+    # - SPAN: cache_set (if miss)
+    # - User attribution from context
+    pass
+```
+
+### Design Decisions Needed
+1. Should cache operations be `span` type (recommended) or `generation` type?
+2. How to handle decorator stacking with `@observe`?
+3. Should tracing be opt-in or automatic?
+
+### Files to Modify
+- `src/mcp_refcache/decorator.py` - Add tracing support
+- `src/mcp_refcache/cache.py` - Add traced get/set methods
+- `examples/langfuse_integration.py` - Enhance TracedRefCache
+- `tests/test_decorator.py` - Add tracing tests
+
+### Implementation Phases
+1. **Phase 1**: Add tracing to TracedRefCache (standalone wrapper)
+2. **Phase 2**: Add optional tracing to @cache.cached() decorator
+3. **Phase 3**: Add cache hit/miss metrics to Langfuse
+
 ---
 
 ## Next Session Starting Prompt
 
 ```
-Continue mcp-refcache: Testable Example + Langfuse Integration
+Continue mcp-refcache: Integrate Langfuse Tracing with RefCache
 
 ## Context
-- Sessions 1-6 complete, 569 tests passing
-- Context-scoped caching fully implemented
-- See `.agent/scratchpad-decorator-refactor.md` Session 7 for plan
+- Session 9 complete, Langfuse cost tracking working!
+- Model comes from session context (default: claude-opus-4-20250514)
+- Costs appear correctly in Langfuse dashboard
+- See `.agent/scratchpad-decorator-refactor.md` Session 9-10 for details
 
-## Session 7 Goals
+## What Was Done (Session 9)
+- Added `model` field to MockContext for cost tracking
+- Fixed Langfuse API: use `update_current_generation()` not `update_current_observation()`
+- Fixed usage keys: `input`/`output` not `input_tokens`/`output_tokens`
+- Verified costs appear in Langfuse dashboard for gpt-4o and claude-opus-4
 
-### Goal 1: Testable Context-Scoped Example
-Add to `examples/mcp_server.py`:
-- Context-scoped tool using `namespace_template`, `owner_template`, `session_scoped`
-- Test utility to simulate different user/agent contexts
-- Works without real FastMCP middleware
+## Current Task: Add Langfuse Tracing to RefCache
 
-Options for mocking context:
-A) Module-level state + custom `try_get_fastmcp_context` wrapper
-B) Environment variables for test context values
-C) A `@with_test_context(user_id="alice")` decorator
+### Goals
+1. Trace cache hits/misses as Langfuse spans
+2. Add user/session attribution to cache operations
+3. Make ref resolution visible in traces
 
-### Goal 2: Langfuse MCP Integration
-Research Langfuse's MCP support:
-- Use `getLangfuseOverview` and `searchLangfuseDocs` tools
-- Find: How to trace MCP tool calls
-- Find: Python SDK integration patterns
-- Implement: Tracing for cache operations
+### Implementation Plan
+1. Enhance `TracedRefCache` in `examples/langfuse_integration.py`
+2. Add cache operation spans (get, set, resolve)
+3. Track hit/miss status in span metadata
+4. Test with live Langfuse dashboard
 
-Create `examples/langfuse_integration.py`:
-- RefCache with Langfuse tracing
-- Spans for cache set/get/resolve
-- Events for cache hits/misses
-- Trace ref_id resolution chains
-
-### Deliverables
-1. Working context-scoped example testable in Zed
-2. Langfuse-integrated example server
-3. Updated README with examples
-
-## Guidelines
-- Follow `.rules` (TDD where applicable)
-- Research Langfuse docs before implementing
-- Run `uv run ruff check . --fix && uv run ruff format .`
-- Live test in Zed/Claude to verify
-```
-authenticated session context, not function parameters.
+### Key Files
+- `examples/langfuse_integration.py` - TracedRefCache class
+- `src/mcp_refcache/cache.py` - Core RefCache class
 
 ## Guidelines
 - Follow `.rules` (TDD, document as you go)
-- Handle missing FastMCP gracefully (try/except import)
+- Cache operations should be `span` type (not `generation`)
 - Run `uv run ruff check . --fix && uv run ruff format .`
-- Run `uv run pytest tests/` before considering complete
+- Run `uv run pytest tests/test_examples.py` to verify
 ```
+
+---
+
+## Key Files Reference
+- `examples/langfuse_integration.py` - MCP server with Langfuse tracing
+- `.zed/settings.json` - MCP server config with env vars
+- `.env` - Langfuse credentials (gitignored)

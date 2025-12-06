@@ -2,6 +2,10 @@
 
 These tests verify that the example servers can be imported and
 instantiated correctly, and that tools are properly registered.
+
+Also tests:
+- Context-scoped caching with MockContext
+- Langfuse integration example
 """
 
 from __future__ import annotations
@@ -454,3 +458,440 @@ class TestMatrixOperations:
 
         expected = [[6, 8], [10, 12]]
         assert result == expected
+
+
+# =============================================================================
+# Context-Scoped Caching Tests
+# =============================================================================
+
+
+class TestContextScopedCaching:
+    """Test context-scoped caching tools from mcp_server example."""
+
+    def test_mock_context_class(self, mock_fastmcp: None) -> None:
+        """Test MockContext class behavior."""
+        import os
+
+        examples_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "examples"
+        )
+        sys.path.insert(0, examples_path)
+
+        try:
+            import mcp_server
+
+            # Test MockContext class
+            MockContext = mcp_server.MockContext
+
+            # Test default values
+            ctx = MockContext()
+            assert ctx.session_id == "demo_session_001"
+            assert ctx.get_state("user_id") == "demo_user"
+            assert ctx.get_state("org_id") == "demo_org"
+
+            # Test set_state
+            MockContext.set_state(user_id="alice", org_id="acme")
+            assert ctx.get_state("user_id") == "alice"
+            assert ctx.get_state("org_id") == "acme"
+
+            # Test set_session_id
+            MockContext.set_session_id("test-session-123")
+            assert ctx.session_id == "test-session-123"
+
+            # Test get_current_state
+            state = MockContext.get_current_state()
+            assert state["user_id"] == "alice"
+            assert state["org_id"] == "acme"
+            assert state["session_id"] == "test-session-123"
+
+            # Test reset
+            MockContext.reset()
+            assert ctx.get_state("user_id") == "demo_user"
+            assert ctx.session_id == "demo_session_001"
+
+        finally:
+            sys.path.remove(examples_path)
+            if "mcp_server" in sys.modules:
+                del sys.modules["mcp_server"]
+
+    def test_enable_test_context_tool(self, mock_fastmcp: None) -> None:
+        """Test enable_test_context tool."""
+        import os
+
+        examples_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "examples"
+        )
+        sys.path.insert(0, examples_path)
+
+        try:
+            import mcp_server
+
+            # Enable test mode
+            result = mcp_server.enable_test_context(True)
+            assert result["test_mode"] is True
+            assert "context" in result
+            assert result["context"]["user_id"] == "demo_user"
+
+            # Disable test mode
+            result = mcp_server.enable_test_context(False)
+            assert result["test_mode"] is False
+            assert result["context"] is None
+
+        finally:
+            # Reset test mode
+            mcp_server._test_mode_enabled = False
+            sys.path.remove(examples_path)
+            if "mcp_server" in sys.modules:
+                del sys.modules["mcp_server"]
+
+    def test_set_test_context_tool(self, mock_fastmcp: None) -> None:
+        """Test set_test_context tool."""
+        import os
+
+        examples_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "examples"
+        )
+        sys.path.insert(0, examples_path)
+
+        try:
+            import mcp_server
+
+            # Reset first
+            mcp_server.MockContext.reset()
+            mcp_server._test_mode_enabled = False
+
+            # Set context (should auto-enable test mode)
+            result = mcp_server.set_test_context(
+                user_id="bob",
+                org_id="globex",
+                session_id="sess-456",
+            )
+
+            assert result["test_mode"] is True
+            assert result["context"]["user_id"] == "bob"
+            assert result["context"]["org_id"] == "globex"
+            assert result["context"]["session_id"] == "sess-456"
+
+        finally:
+            mcp_server.MockContext.reset()
+            mcp_server._test_mode_enabled = False
+            sys.path.remove(examples_path)
+            if "mcp_server" in sys.modules:
+                del sys.modules["mcp_server"]
+
+    def test_reset_test_context_tool(self, mock_fastmcp: None) -> None:
+        """Test reset_test_context tool."""
+        import os
+
+        examples_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "examples"
+        )
+        sys.path.insert(0, examples_path)
+
+        try:
+            import mcp_server
+
+            # Set custom values
+            mcp_server.MockContext.set_state(user_id="custom")
+            mcp_server.MockContext.set_session_id("custom-session")
+
+            # Reset
+            result = mcp_server.reset_test_context()
+            assert result["context"]["user_id"] == "demo_user"
+            assert result["context"]["session_id"] == "demo_session_001"
+
+        finally:
+            mcp_server._test_mode_enabled = False
+            sys.path.remove(examples_path)
+            if "mcp_server" in sys.modules:
+                del sys.modules["mcp_server"]
+
+
+# =============================================================================
+# Langfuse Integration Tests
+# =============================================================================
+
+
+class TestLangfuseIntegration:
+    """Test Langfuse integration example."""
+
+    def test_langfuse_example_importable(self, mock_fastmcp: None) -> None:
+        """Test that Langfuse example can be imported."""
+        import os
+
+        examples_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "examples"
+        )
+        sys.path.insert(0, examples_path)
+
+        # Mock langfuse module
+        mock_langfuse = type(sys)("langfuse")
+
+        class MockObserve:
+            """Mock observe decorator."""
+
+            def __init__(self, **kwargs: object) -> None:
+                self.kwargs = kwargs
+
+            def __call__(self, func: object) -> object:
+                return func
+
+        def mock_get_client() -> object:
+            class MockClient:
+                def start_as_current_observation(self, **kwargs: object) -> object:
+                    return MockContextManager()
+
+                def flush(self) -> None:
+                    pass
+
+            return MockClient()
+
+        class MockContextManager:
+            def __enter__(self) -> MockContextManager:
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                pass
+
+            def update(self, **kwargs: object) -> None:
+                pass
+
+        # Mock propagate_attributes context manager
+        class MockPropagateAttributes:
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
+            def __enter__(self) -> MockPropagateAttributes:
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                pass
+
+        mock_langfuse.observe = MockObserve
+        mock_langfuse.get_client = mock_get_client
+        mock_langfuse.propagate_attributes = MockPropagateAttributes
+        mock_langfuse.Langfuse = type("Langfuse", (), {})
+
+        try:
+            with patch.dict(sys.modules, {"langfuse": mock_langfuse}):
+                # Clear any cached import
+                if "langfuse_integration" in sys.modules:
+                    del sys.modules["langfuse_integration"]
+
+                import langfuse_integration
+
+                # Check key components exist
+                assert hasattr(langfuse_integration, "TracedRefCache")
+                assert hasattr(langfuse_integration, "calculate")
+                assert hasattr(langfuse_integration, "generate_fibonacci")
+                assert hasattr(langfuse_integration, "generate_primes")
+                assert hasattr(langfuse_integration, "get_cached_result")
+                assert hasattr(langfuse_integration, "traced_tool")
+
+        finally:
+            sys.path.remove(examples_path)
+            if "langfuse_integration" in sys.modules:
+                del sys.modules["langfuse_integration"]
+
+    def test_traced_refcache_wrapper(self) -> None:
+        """Test TracedRefCache wrapper functionality without Langfuse."""
+        from mcp_refcache import PreviewConfig, RefCache
+
+        # Create a simple cache
+        cache = RefCache(
+            name="test-traced",
+            preview_config=PreviewConfig(max_size=100),
+        )
+
+        # Store and retrieve a value
+        ref = cache.set("test_key", {"data": [1, 2, 3]})
+        assert ref.ref_id is not None
+
+        # Get the value back
+        response = cache.get(ref.ref_id)
+        assert response is not None
+        assert response.ref_id == ref.ref_id
+
+    def test_get_langfuse_attributes_with_context(self) -> None:
+        """Test get_langfuse_attributes extracts correct values from MockContext."""
+        import sys
+        from pathlib import Path
+
+        examples_path = str(Path(__file__).parent.parent / "examples")
+        sys.path.insert(0, examples_path)
+
+        try:
+            # Import directly since langfuse is now in dev deps
+            import langfuse_integration
+
+            # Enable test mode
+            langfuse_integration._test_mode_enabled = True
+            langfuse_integration.MockContext.set_state(
+                user_id="alice",
+                org_id="acme_corp",
+                agent_id="test_agent",
+            )
+            langfuse_integration.MockContext.set_session_id("sess-12345")
+
+            # Get attributes
+            attrs = langfuse_integration.get_langfuse_attributes(
+                cache_namespace="user:alice",
+                operation="cache_set",
+            )
+
+            # Verify native Langfuse fields
+            assert attrs["user_id"] == "alice"
+            assert attrs["session_id"] == "sess-12345"
+
+            # Verify metadata (alphanumeric keys only)
+            assert attrs["metadata"]["orgid"] == "acme_corp"
+            assert attrs["metadata"]["agentid"] == "test_agent"
+            assert attrs["metadata"]["cachenamespace"] == "user:alice"
+            assert attrs["metadata"]["operation"] == "cache_set"
+
+            # Verify model for cost tracking (default value)
+            assert attrs["model"] == "claude-opus-4-20250514"
+
+            # Verify tags
+            assert "mcprefcache" in attrs["tags"]
+            assert "cacheset" in attrs["tags"]
+            assert "testmode" in attrs["tags"]
+
+            # Verify version
+            assert attrs["version"] == "1.0.0"
+
+        finally:
+            sys.path.remove(examples_path)
+            # Reset state
+            langfuse_integration.MockContext.reset()
+            langfuse_integration._test_mode_enabled = False
+            if "langfuse_integration" in sys.modules:
+                del sys.modules["langfuse_integration"]
+
+    def test_get_langfuse_attributes_without_context(self) -> None:
+        """Test get_langfuse_attributes uses fallback values when no context."""
+        import sys
+        from pathlib import Path
+
+        examples_path = str(Path(__file__).parent.parent / "examples")
+        sys.path.insert(0, examples_path)
+
+        try:
+            import langfuse_integration
+
+            # Disable test mode - should use fallbacks
+            langfuse_integration._test_mode_enabled = False
+
+            # Get attributes without context
+            attrs = langfuse_integration.get_langfuse_attributes()
+
+            # Verify fallback values
+            assert attrs["user_id"] == "anonymous"
+            assert attrs["session_id"] == "nosession"
+            assert attrs["metadata"]["orgid"] == "default"
+            assert attrs["metadata"]["agentid"] == "unknown"
+
+            # Verify model fallback
+            assert attrs["model"] == "claude-opus-4-20250514"
+
+        finally:
+            sys.path.remove(examples_path)
+            if "langfuse_integration" in sys.modules:
+                del sys.modules["langfuse_integration"]
+
+    def test_langfuse_attributes_truncation(self) -> None:
+        """Test that Langfuse attributes are truncated to 200 chars."""
+        import sys
+        from pathlib import Path
+
+        examples_path = str(Path(__file__).parent.parent / "examples")
+        sys.path.insert(0, examples_path)
+
+        try:
+            import langfuse_integration
+
+            # Enable test mode with very long values
+            langfuse_integration._test_mode_enabled = True
+            long_user_id = "a" * 300  # Exceeds 200 char limit
+            langfuse_integration.MockContext.set_state(user_id=long_user_id)
+
+            attrs = langfuse_integration.get_langfuse_attributes()
+
+            # Verify truncation to 200 chars
+            assert len(attrs["user_id"]) == 200
+            assert attrs["user_id"] == "a" * 200
+
+        finally:
+            sys.path.remove(examples_path)
+            langfuse_integration.MockContext.reset()
+            langfuse_integration._test_mode_enabled = False
+            if "langfuse_integration" in sys.modules:
+                del sys.modules["langfuse_integration"]
+
+    def test_langfuse_mock_context_class(self) -> None:
+        """Test the Langfuse example's MockContext class and state management."""
+        import sys
+        from pathlib import Path
+
+        examples_path = str(Path(__file__).parent.parent / "examples")
+        sys.path.insert(0, examples_path)
+
+        try:
+            import langfuse_integration
+
+            # Test MockContext class methods directly (not the @mcp.tool wrapped functions)
+            MockContext = langfuse_integration.MockContext
+
+            # Test initial state
+            MockContext.reset()
+            state = MockContext.get_current_state()
+            assert state["user_id"] == "demo_user"
+            assert state["org_id"] == "demo_org"
+            assert state["session_id"] == "demo_session_001"
+            assert state["model"] == "claude-opus-4-20250514"
+
+            # Test set_state
+            MockContext.set_state(user_id="bob", org_id="globex")
+            state = MockContext.get_current_state()
+            assert state["user_id"] == "bob"
+            assert state["org_id"] == "globex"
+
+            # Test model can be set via set_state
+            MockContext.set_state(model="gpt-4o")
+            state = MockContext.get_current_state()
+            assert state["model"] == "gpt-4o"
+
+            # Verify model is included in langfuse attributes
+            langfuse_integration._test_mode_enabled = True
+            attrs = langfuse_integration.get_langfuse_attributes()
+            assert attrs["model"] == "gpt-4o"
+            langfuse_integration._test_mode_enabled = False
+
+            # Test set_session_id
+            MockContext.set_session_id("chat-999")
+            state = MockContext.get_current_state()
+            assert state["session_id"] == "chat-999"
+
+            # Test get_state via instance
+            ctx = MockContext()
+            assert ctx.get_state("user_id") == "bob"
+            assert ctx.get_state("org_id") == "globex"
+            assert ctx.session_id == "chat-999"
+
+            # Test reset
+            MockContext.reset()
+            state = MockContext.get_current_state()
+            assert state["user_id"] == "demo_user"
+
+            # Test _test_mode_enabled flag
+            langfuse_integration._test_mode_enabled = True
+            attrs = langfuse_integration.get_langfuse_attributes()
+            assert "testmode" in attrs["tags"]
+            langfuse_integration._test_mode_enabled = False
+
+        finally:
+            sys.path.remove(examples_path)
+            langfuse_integration.MockContext.reset()
+            langfuse_integration._test_mode_enabled = False
+            if "langfuse_integration" in sys.modules:
+                del sys.modules["langfuse_integration"]

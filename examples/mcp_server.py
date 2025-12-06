@@ -43,7 +43,7 @@ import math
 import re
 import sys
 from enum import Enum
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -67,6 +67,8 @@ except ImportError:
 # Import mcp-refcache components
 # =============================================================================
 
+# Import context integration for testing context-scoped caching
+import mcp_refcache.context_integration as ctx_integration
 from mcp_refcache import (
     AccessPolicy,
     CacheResponse,
@@ -750,6 +752,318 @@ async def get_cached_result(
 # =============================================================================
 
 
+# =============================================================================
+# Context-Scoped Caching Demo (Test Mode)
+# =============================================================================
+# This section demonstrates context-scoped caching with testable mock context.
+# In production, context comes from FastMCP middleware (e.g., IdentityMiddleware).
+# For testing/demo purposes, we provide tools to simulate different user contexts.
+
+
+class MockContext:
+    """Mock FastMCP Context for testing context-scoped caching.
+
+    This class simulates a FastMCP Context object with the minimum API
+    needed for context-scoped caching:
+    - session_id attribute
+    - get_state(key) method for retrieving identity values
+    """
+
+    # Class-level state storage (shared across all instances)
+    _state: ClassVar[dict[str, str]] = {
+        "user_id": "demo_user",
+        "org_id": "demo_org",
+        "agent_id": "demo_agent",
+    }
+    _session_id: ClassVar[str] = "demo_session_001"
+
+    @property
+    def session_id(self) -> str:
+        """Get the current session ID."""
+        return MockContext._session_id
+
+    @property
+    def client_id(self) -> str:
+        """Get the client ID (for compatibility)."""
+        return "demo_client"
+
+    @property
+    def request_id(self) -> str:
+        """Get the request ID (for compatibility)."""
+        return "demo_request"
+
+    def get_state(self, key: str) -> str | None:
+        """Get a state value by key."""
+        return MockContext._state.get(key)
+
+    @classmethod
+    def set_state(cls, **kwargs: str) -> None:
+        """Update state values."""
+        cls._state.update(kwargs)
+
+    @classmethod
+    def set_session_id(cls, session_id: str) -> None:
+        """Update the session ID."""
+        cls._session_id = session_id
+
+    @classmethod
+    def get_current_state(cls) -> dict[str, Any]:
+        """Get a copy of current state for inspection."""
+        return {
+            **cls._state,
+            "session_id": cls._session_id,
+        }
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset to default test values."""
+        cls._state = {
+            "user_id": "demo_user",
+            "org_id": "demo_org",
+            "agent_id": "demo_agent",
+        }
+        cls._session_id = "demo_session_001"
+
+
+# Store original function for restoration
+_original_try_get_context = ctx_integration.try_get_fastmcp_context
+_test_mode_enabled = False
+
+
+def _mock_try_get_fastmcp_context() -> MockContext | None:
+    """Mock version that returns our test context."""
+    if _test_mode_enabled:
+        return MockContext()
+    return _original_try_get_context()
+
+
+# Patch the context integration module
+ctx_integration.try_get_fastmcp_context = _mock_try_get_fastmcp_context
+
+
+@mcp.tool
+def enable_test_context(enabled: bool = True) -> dict[str, Any]:
+    """Enable or disable test context mode for context-scoped caching demos.
+
+    When enabled, context-scoped caching tools will use the MockContext
+    instead of trying to get a real FastMCP Context. This allows testing
+    the context-scoped features without running a full FastMCP server
+    with authentication middleware.
+
+    Args:
+        enabled: Whether to enable test context mode (default: True).
+
+    Returns:
+        Status dict with current test mode state and context values.
+
+    Example:
+        Enable test mode:
+        >>> enable_test_context(True)
+        {"test_mode": True, "context": {"user_id": "demo_user", ...}}
+
+        Disable test mode:
+        >>> enable_test_context(False)
+        {"test_mode": False, "context": null}
+    """
+    global _test_mode_enabled
+    _test_mode_enabled = enabled
+
+    if enabled:
+        return {
+            "test_mode": True,
+            "context": MockContext.get_current_state(),
+            "message": "Test context mode enabled. Use set_test_context to change identity.",
+        }
+    return {
+        "test_mode": False,
+        "context": None,
+        "message": "Test context mode disabled. Context-scoped caching will use real FastMCP context.",
+    }
+
+
+@mcp.tool
+def set_test_context(
+    user_id: str | None = None,
+    org_id: str | None = None,
+    session_id: str | None = None,
+    agent_id: str | None = None,
+) -> dict[str, Any]:
+    """Set test context values for context-scoped caching demos.
+
+    This tool allows you to simulate different user/org/session contexts
+    to test cache isolation. Each unique combination of context values
+    results in a different cache namespace.
+
+    Args:
+        user_id: User identity (e.g., "alice", "bob").
+        org_id: Organization identity (e.g., "acme", "globex").
+        session_id: Session identifier (for session-scoped caching).
+        agent_id: Agent identity (for agent-specific contexts).
+
+    Returns:
+        Dict with updated context values and test mode status.
+
+    Example:
+        Simulate user "alice" from org "acme":
+        >>> set_test_context(user_id="alice", org_id="acme")
+
+        Switch to user "bob":
+        >>> set_test_context(user_id="bob")
+
+        Now cache lookups will use bob's namespace instead of alice's!
+    """
+    global _test_mode_enabled
+
+    # Auto-enable test mode when setting context
+    if not _test_mode_enabled:
+        _test_mode_enabled = True
+
+    # Update only provided values
+    updates: dict[str, str] = {}
+    if user_id is not None:
+        updates["user_id"] = user_id
+    if org_id is not None:
+        updates["org_id"] = org_id
+    if agent_id is not None:
+        updates["agent_id"] = agent_id
+
+    if updates:
+        MockContext.set_state(**updates)
+
+    if session_id is not None:
+        MockContext.set_session_id(session_id)
+
+    return {
+        "test_mode": True,
+        "context": MockContext.get_current_state(),
+        "message": f"Context updated. Cache namespace will reflect: {MockContext.get_current_state()}",
+    }
+
+
+@mcp.tool
+def reset_test_context() -> dict[str, Any]:
+    """Reset test context to default demo values.
+
+    Useful for cleaning up between test scenarios.
+
+    Returns:
+        Dict with reset context values.
+    """
+    MockContext.reset()
+    return {
+        "test_mode": _test_mode_enabled,
+        "context": MockContext.get_current_state(),
+        "message": "Context reset to default demo values.",
+    }
+
+
+# Context-scoped tool example
+@cache.cached(
+    namespace_template="org:{org_id}:user:{user_id}",
+    owner_template="user:{user_id}",
+    session_scoped=True,
+    ttl=300,  # 5 minutes
+)
+@mcp.tool
+async def get_user_profile(include_preferences: bool = False) -> dict[str, Any]:
+    """Get the current user's profile (context-scoped caching demo).
+
+    This tool demonstrates context-scoped caching. The result is cached
+    in a namespace derived from the user's identity context:
+    - Namespace: org:{org_id}:user:{user_id}
+    - Owner: user:{user_id}
+    - Session-scoped: Only accessible within the current session
+
+    Different users get different cached results, and one user cannot
+    access another user's cached profile data.
+
+    Args:
+        include_preferences: Whether to include user preferences.
+
+    Returns:
+        User profile dict with name, email, org, and optionally preferences.
+
+    Example:
+        First, enable test context and set identity:
+        >>> enable_test_context(True)
+        >>> set_test_context(user_id="alice", org_id="acme")
+        >>> get_user_profile()
+        # Returns alice's profile, cached in org:acme:user:alice namespace
+
+        Switch to different user:
+        >>> set_test_context(user_id="bob")
+        >>> get_user_profile()
+        # Returns bob's profile - CACHE MISS (different namespace)
+    """
+    # In a real app, this would fetch from a database
+    # For demo, we construct profile from context
+    ctx = MockContext() if _test_mode_enabled else None
+    user_id = ctx.get_state("user_id") if ctx else "unknown"
+    org_id = ctx.get_state("org_id") if ctx else "unknown"
+
+    profile = {
+        "user_id": user_id,
+        "display_name": f"User {user_id.title()}",
+        "email": f"{user_id}@{org_id}.example.com",
+        "organization": org_id,
+        "role": "member",
+    }
+
+    if include_preferences:
+        profile["preferences"] = {
+            "theme": "dark",
+            "language": "en",
+            "notifications": True,
+        }
+
+    return profile
+
+
+@cache.cached(
+    namespace_template="user:{user_id}:data",
+    owner_template="user:{user_id}",
+    ttl=600,  # 10 minutes
+)
+@mcp.tool
+async def store_user_data(key: str, value: str) -> dict[str, Any]:
+    """Store user-scoped data (context-scoped caching demo).
+
+    Each user has their own isolated data namespace. Data stored by
+    one user is not accessible to other users.
+
+    Args:
+        key: The data key to store.
+        value: The value to store.
+
+    Returns:
+        Confirmation with stored key-value pair.
+
+    Example:
+        >>> set_test_context(user_id="alice")
+        >>> store_user_data("favorite_color", "blue")
+        # Stored in user:alice:data namespace
+
+        >>> set_test_context(user_id="bob")
+        >>> store_user_data("favorite_color", "green")
+        # Stored in user:bob:data namespace (different from alice's)
+    """
+    ctx = MockContext() if _test_mode_enabled else None
+    user_id = ctx.get_state("user_id") if ctx else "unknown"
+
+    return {
+        "user_id": user_id,
+        "key": key,
+        "value": value,
+        "stored_at": "now",
+        "namespace": f"user:{user_id}:data",
+    }
+
+
+# =============================================================================
+# Admin Check
+# =============================================================================
+
+
 async def is_admin(ctx: Context | None) -> bool:
     """Check if the current context has admin privileges.
 
@@ -788,6 +1102,29 @@ _admin_tools = register_admin_tools(
 def calculator_guide() -> str:
     """Guide for using the Scientific Calculator MCP server."""
     return f"""# Scientific Calculator Guide
+
+## Context-Scoped Caching (NEW)
+
+Test user isolation with context-scoped caching:
+
+```
+# Enable test mode
+enable_test_context(True)
+
+# Set user context
+set_test_context(user_id="alice", org_id="acme")
+
+# Get alice's profile (cached in alice's namespace)
+get_user_profile()
+
+# Switch to bob
+set_test_context(user_id="bob")
+
+# Get bob's profile (CACHE MISS - different namespace!)
+get_user_profile()
+```
+
+Each user's data is isolated in their own namespace.
 
 ## Quick Start
 

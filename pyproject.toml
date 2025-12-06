@@ -52,6 +52,9 @@ tiktoken = [
 transformers = [
     "transformers>=4.30.0",
 ]
+langfuse = [
+    "langfuse>=3.10.5",
+]
 
 [project.urls]
 Homepage = "https://github.com/l4b4r4b4b4/mcp-refcache"
@@ -71,6 +74,7 @@ dev = [
     "bandit[toml]>=1.7.0",
     "fastmcp>=2.13.3",
     "tiktoken>=0.12.0",
+    "langfuse>=3.10.5",
 ]
 
 [build-system]

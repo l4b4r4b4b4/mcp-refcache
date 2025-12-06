@@ -48,6 +48,15 @@
     "calculator": {
       "command": "uv",
       "args": ["run", "python", "examples/mcp_server.py"]
+    },
+    "langfuse-calculator": {
+      "command": "uv",
+      "args": ["run", "python", "examples/langfuse_integration.py"],
+      "env": {
+        "LANGFUSE_PUBLIC_KEY": "pk-lf-9d74d5d3-dfc2-433c-9efe-8822ef40390c",
+        "LANGFUSE_SECRET_KEY": "sk-lf-1977f0a0-8f30-46d4-89fc-efd58420493c",
+        "LANGFUSE_HOST": "https://cloud.langfuse.com"
+      }
     }
   }
 }
