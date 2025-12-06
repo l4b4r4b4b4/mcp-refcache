@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable  # noqa: TC003 - used at runtime in type hints
 from typing import Any, ParamSpec, TypeVar
 
-from mcp_refcache.access.actor import ActorLike, resolve_actor
+from mcp_refcache.access.actor import Actor, ActorLike, resolve_actor
 from mcp_refcache.access.checker import (
     DefaultPermissionChecker,
     PermissionChecker,
@@ -27,6 +27,13 @@ from mcp_refcache.context import (
     Tokenizer,
     TokenMeasurer,
     get_default_measurer,
+)
+from mcp_refcache.context_integration import (
+    build_context_scoped_policy,
+    derive_actor_from_context,
+    expand_template,
+    get_context_values,
+    try_get_fastmcp_context,
 )
 from mcp_refcache.models import (
     CacheReference,
@@ -438,6 +445,10 @@ class RefCache:
         max_size: int | None = None,
         resolve_refs: bool = True,
         actor: str = "agent",
+        # Context-scoped parameters
+        namespace_template: str | None = None,
+        owner_template: str | None = None,
+        session_scoped: bool = False,
     ) -> Callable[[Callable[P, R]], Callable[P, R]]:
         """Decorator to cache function results and return structured responses.
 
@@ -449,8 +460,14 @@ class RefCache:
         - Small results: Full value + ref_id + metadata (is_complete=True)
         - Large results: Preview + ref_id + pagination info (is_complete=False)
 
+        Context-Scoped Caching:
+            When used with FastMCP, namespace and owner can be dynamically
+            derived from the authenticated session context. This ensures
+            agents cannot control their own scoping - identity comes from
+            middleware-set values, not function parameters.
+
         Args:
-            namespace: Namespace for cached results.
+            namespace: Static namespace for cached results.
             policy: Access policy for cached results.
             ttl: TTL for cached results.
             max_size: Maximum size (tokens/chars) before auto-preview.
@@ -459,6 +476,13 @@ class RefCache:
                 executing the function. Any parameter value matching the ref_id
                 pattern will be hot-swapped with the cached value.
             actor: Actor identity for permission checks when resolving refs.
+            namespace_template: Dynamic namespace template with {placeholders}.
+                Placeholders are filled from FastMCP Context (e.g.,
+                "org:{org_id}:user:{user_id}"). Takes priority over namespace.
+            owner_template: Dynamic owner template with {placeholders}.
+                Sets AccessPolicy.owner from context (e.g., "user:{user_id}").
+            session_scoped: If True, binds cached value to the current session.
+                Only the session that created the cache entry can access it.
 
         Returns:
             A decorator that wraps functions with caching and structured responses.
@@ -476,17 +500,26 @@ class RefCache:
             # Large result - returns preview:
             # {"ref_id": "...", "preview": [0, 50, 100, ...], "is_complete": False, ...}
 
-            # Ref_id resolution - agent can pass refs from previous tools:
+            # Context-scoped caching (with FastMCP):
             @mcp.tool
-            @cache.cached(namespace="results")
-            def process_data(data: list[int], factor: float) -> list[float]:
-                return [x * factor for x in data]
-
-            # Agent calls: process_data(data="myapp:abc123", factor=2.0)
-            # Decorator resolves "myapp:abc123" to actual list before execution
+            @cache.cached(
+                namespace_template="org:{org_id}:user:{user_id}",
+                owner_template="user:{user_id}",
+                session_scoped=True,
+            )
+            async def get_account_balance(account_id: str) -> dict:
+                # Namespace becomes "org:acme:user:alice" from context
+                # Owner is automatically set to "user:alice"
+                # Only this session can access the cached result
+                ...
             ```
         """
         effective_max_size = max_size or self.preview_config.max_size
+        use_context_scoping = (
+            namespace_template is not None
+            or owner_template is not None
+            or session_scoped
+        )
 
         def decorator(func: Callable[P, R]) -> Callable[P, dict[str, Any]]:
             is_async = inspect.iscoroutinefunction(func)
@@ -510,18 +543,67 @@ class RefCache:
 **Preview Size:** {max_size_doc}. Override per-call with `get_cached_result(ref_id, max_size=...)`."""
             func.__doc__ = original_doc + cache_doc
 
+            def _get_context_scoped_values() -> tuple[
+                str, AccessPolicy | None, Actor | None
+            ]:
+                """Get namespace, policy, and actor from FastMCP context.
+
+                Returns:
+                    Tuple of (effective_namespace, effective_policy, effective_actor)
+                """
+                if not use_context_scoping:
+                    return namespace, policy, None
+
+                # Try to get FastMCP context
+                ctx = try_get_fastmcp_context()
+                if ctx is None:
+                    # No context available - use static values with fallbacks
+                    context_values: dict[str, str] = {}
+                else:
+                    context_values = get_context_values(ctx)
+
+                # Expand namespace template or use static namespace
+                if namespace_template is not None:
+                    effective_namespace = expand_template(
+                        namespace_template, context_values
+                    )
+                else:
+                    effective_namespace = namespace
+
+                # Build policy with owner and session binding
+                effective_policy = build_context_scoped_policy(
+                    base_policy=policy,
+                    context_values=context_values,
+                    owner_template=owner_template,
+                    session_scoped=session_scoped,
+                )
+
+                # Derive actor from context
+                effective_actor = derive_actor_from_context(
+                    context_values, default_actor=actor
+                )
+
+                return effective_namespace, effective_policy, effective_actor
+
             def _resolve_inputs(
-                args: tuple[Any, ...], kwargs: dict[str, Any]
+                args: tuple[Any, ...],
+                kwargs: dict[str, Any],
+                effective_actor: Actor | None,
             ) -> tuple[tuple[Any, ...], dict[str, Any]]:
                 """Resolve any ref_ids in args and kwargs."""
                 if not resolve_refs:
                     return args, kwargs
 
+                # Use context-derived actor if available
+                actor_for_resolution = (
+                    effective_actor if effective_actor is not None else actor
+                )
+
                 args_result, kwargs_result = resolve_args_and_kwargs(
                     self,
                     args,
                     kwargs,
-                    actor=actor,
+                    actor=actor_for_resolution,
                     fail_on_missing=True,
                 )
 
@@ -576,8 +658,17 @@ class RefCache:
                 async def async_wrapper(
                     *args: P.args, **kwargs: P.kwargs
                 ) -> dict[str, Any]:
+                    # Step 0: Get context-scoped values (namespace, policy, actor)
+                    (
+                        effective_namespace,
+                        effective_policy,
+                        effective_actor,
+                    ) = _get_context_scoped_values()
+
                     # Step 1: Resolve any ref_ids in inputs
-                    resolved_args, resolved_kwargs = _resolve_inputs(args, kwargs)
+                    resolved_args, resolved_kwargs = _resolve_inputs(
+                        args, kwargs, effective_actor
+                    )
 
                     # Step 2: Generate cache key from RESOLVED inputs
                     cache_key = self._make_cache_key(
@@ -585,7 +676,9 @@ class RefCache:
                     )
 
                     # Step 3: Check if already cached
-                    namespaced_key = self._make_namespaced_key(cache_key, namespace)
+                    namespaced_key = self._make_namespaced_key(
+                        cache_key, effective_namespace
+                    )
                     if namespaced_key in self._key_to_ref:
                         ref_id = self._key_to_ref[namespaced_key]
                         if self._backend.exists(ref_id):
@@ -600,8 +693,8 @@ class RefCache:
                     ref = self.set(
                         cache_key,
                         result,
-                        namespace=namespace,
-                        policy=policy,
+                        namespace=effective_namespace,
+                        policy=effective_policy,
                         ttl=ttl,
                         tool_name=func.__name__,
                     )
@@ -619,8 +712,17 @@ class RefCache:
 
                 @functools.wraps(func)
                 def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> dict[str, Any]:
+                    # Step 0: Get context-scoped values (namespace, policy, actor)
+                    (
+                        effective_namespace,
+                        effective_policy,
+                        effective_actor,
+                    ) = _get_context_scoped_values()
+
                     # Step 1: Resolve any ref_ids in inputs
-                    resolved_args, resolved_kwargs = _resolve_inputs(args, kwargs)
+                    resolved_args, resolved_kwargs = _resolve_inputs(
+                        args, kwargs, effective_actor
+                    )
 
                     # Step 2: Generate cache key from RESOLVED inputs
                     cache_key = self._make_cache_key(
@@ -628,7 +730,9 @@ class RefCache:
                     )
 
                     # Step 3: Check if already cached
-                    namespaced_key = self._make_namespaced_key(cache_key, namespace)
+                    namespaced_key = self._make_namespaced_key(
+                        cache_key, effective_namespace
+                    )
                     if namespaced_key in self._key_to_ref:
                         ref_id = self._key_to_ref[namespaced_key]
                         if self._backend.exists(ref_id):
@@ -643,8 +747,8 @@ class RefCache:
                     ref = self.set(
                         cache_key,
                         result,
-                        namespace=namespace,
-                        policy=policy,
+                        namespace=effective_namespace,
+                        policy=effective_policy,
                         ttl=ttl,
                         tool_name=func.__name__,
                     )

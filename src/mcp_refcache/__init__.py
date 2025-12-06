@@ -6,6 +6,7 @@ This library provides context-aware caching with:
 - Identity-aware actors (users, agents, system)
 - Private computation (EXECUTE permission for blind compute)
 - Context limiting (token/char-based with truncate/paginate/sample strategies)
+- Context-scoped caching (dynamic namespace/owner from FastMCP context)
 """
 
 from mcp_refcache.access.actor import (
@@ -63,6 +64,14 @@ from mcp_refcache.preview import (
     TruncateGenerator,
     get_default_generator,
 )
+from mcp_refcache.context_integration import (
+    DEFAULT_FALLBACKS,
+    build_context_scoped_policy,
+    derive_actor_from_context,
+    expand_template,
+    get_context_values,
+    try_get_fastmcp_context,
+)
 from mcp_refcache.resolution import (
     CircularReferenceError,
     RefResolver,
@@ -76,6 +85,7 @@ from mcp_refcache.resolution import (
 __version__ = "0.0.1"
 
 __all__ = [
+    "DEFAULT_FALLBACKS",
     "POLICY_EXECUTE_ONLY",
     "POLICY_PUBLIC",
     "POLICY_READ_ONLY",
@@ -118,6 +128,10 @@ __all__ = [
     "Tokenizer",
     "TruncateGenerator",
     "__version__",
+    "build_context_scoped_policy",
+    "derive_actor_from_context",
+    "expand_template",
+    "get_context_values",
     "get_default_generator",
     "get_default_measurer",
     "get_default_tokenizer",
@@ -126,4 +140,5 @@ __all__ = [
     "resolve_args_and_kwargs",
     "resolve_kwargs",
     "resolve_refs",
+    "try_get_fastmcp_context",
 ]

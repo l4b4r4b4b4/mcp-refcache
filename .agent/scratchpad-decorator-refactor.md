@@ -48,6 +48,8 @@ Refactor the `@cache.cached()` decorator to provide full MCP tool integration wi
 - [x] Committed all changes
 - [x] **Session 3**: Pagination auto-switch, async tests, opaque errors (459 tests)
 - [x] **Session 4**: Hierarchical max_size feature with documentation injection (499 tests)
+- [x] **Session 5**: Research complete on FastMCP Context integration
+- [x] **Session 6**: Context-scoped caching implementation (569 tests)
 
 ### TODO 📋
 - [ ] Consider short ref_id prefix matching (like git/docker) - see discussion below
@@ -922,39 +924,99 @@ class TestContextScopedCaching:
 
 ---
 
+## Session 6: Context-Scoped Caching Implementation ✅ COMPLETE
+
+### Implementation Summary
+
+Successfully implemented context-scoped caching in `@cache.cached()` decorator.
+
+#### Files Created
+- `src/mcp_refcache/context_integration.py` - Template expansion, context value extraction, actor derivation
+- `tests/test_context_integration.py` - 49 tests for context integration utilities
+- `tests/test_context_scoped_decorator.py` - 21 tests for decorator context scoping
+
+#### Files Modified
+- `src/mcp_refcache/cache.py` - Added new decorator parameters and context integration
+- `src/mcp_refcache/__init__.py` - Exported new context integration functions
+
+#### New Decorator Parameters
+```python
+@cache.cached(
+    # Existing parameters...
+    namespace_template: str | None = None,    # "org:{org_id}:user:{user_id}"
+    owner_template: str | None = None,        # "user:{user_id}"
+    session_scoped: bool = False,             # Bind to ctx.session_id
+)
+```
+
+#### Key Features
+1. **Dynamic Namespace**: `namespace_template="user:{user_id}"` expands from context
+2. **Dynamic Owner**: `owner_template="user:{user_id}"` sets policy owner from context
+3. **Session Binding**: `session_scoped=True` binds cache to current session
+4. **Actor Derivation**: Automatically derives actor from context (`user_id` or `agent_id`)
+5. **Graceful Degradation**: Works with fallbacks when FastMCP not available
+6. **Security**: Agents cannot control scoping - identity comes from authenticated context
+
+#### Template Expansion Sources (priority order)
+1. `ctx.get_state(key)` - Middleware-set values
+2. `ctx.session_id`, `ctx.client_id`, `ctx.request_id` - Built-in Context attrs
+3. `DEFAULT_FALLBACKS` - Sensible defaults (`user_id→"anonymous"`, etc.)
+
+#### Test Results
+- **569 tests passing** (up from 499)
+- 70 new tests for context integration
+- All existing tests continue to pass
+
+### Example Usage
+```python
+@cache.cached(
+    namespace_template="org:{org_id}:user:{user_id}",
+    owner_template="user:{user_id}",
+    session_scoped=True,
+)
+@mcp.tool
+async def get_account_balance(account_id: str) -> dict:
+    # Namespace becomes "org:acme:user:alice" from authenticated context
+    # Owner is automatically "user:alice"
+    # Only this session can access the cached result
+    ...
+```
+
+---
+
 ## Next Session Starting Prompt
 
 ```
-Continue mcp-refcache: Context-Scoped Caching
+Continue mcp-refcache: Documentation & Examples
 
 ## Context
-- Sessions 1-4 complete, 499 tests passing
-- Research complete on FastMCP Context integration
-- See `.agent/scratchpad-decorator-refactor.md` Session 5 for full design
+- Sessions 1-6 complete, 569 tests passing
+- Context-scoped caching fully implemented
+- See `.agent/scratchpad-decorator-refactor.md` for full history
 
-## Key Discovery
-- FastMCP sets Context via ContextVar BEFORE calling tools
-- Our decorator can call `get_context()` from `fastmcp.server.dependencies`
-- No need for `ctx` parameter in function signature!
+## Completed Features
+- Dynamic namespace via `namespace_template`
+- Dynamic owner via `owner_template`
+- Session binding via `session_scoped`
+- Actor derivation from context (user_id, agent_id)
+- Graceful degradation without FastMCP
 
-## Implementation Plan
+## Remaining Tasks
 
-### Phase 1: Context-Scoped Decorator
-Add to `@cache.cached()`:
-- `namespace_template="org:{org_id}:user:{user_id}"` - Dynamic namespace
-- `owner_template="user:{user_id}"` - Auto-set owner  
-- `session_scoped=True` - Bind to session
+### High Priority
+1. Update `examples/mcp_server.py` with context-scoped example
+2. Update `README.md` with context-scoped caching documentation
+3. Add example middleware showing identity extraction from JWT
 
-Template values come from:
-1. `ctx.get_state(key)` - Middleware-set values
-2. `ctx.session_id`, `ctx.client_id` - Built-in Context attrs
-3. Fallbacks: "anonymous", "default", "nosession"
+### Optional Polish
+- Add `IdentityMiddleware` helper class for common auth patterns
+- Consider cacheTag/cacheLife integration for invalidation
 
-### Files to Create/Modify
-1. `src/mcp_refcache/context_integration.py` (NEW) - Template expansion
-2. `src/mcp_refcache/cache.py` - Add new decorator params
-3. `tests/test_context_scoping.py` (NEW) - Context scoping tests
-4. `examples/mcp_server.py` - Add context-scoped example
+## Guidelines
+- Follow `.rules` (TDD, document as you go)
+- Run `uv run ruff check . --fix && uv run ruff format .`
+- Run `uv run pytest tests/` before considering complete
+```
 
 ### Security Goal
 Agents CANNOT control their own scoping - identity comes from 
