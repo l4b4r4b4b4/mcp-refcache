@@ -85,6 +85,34 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcp_refcache"]
 
+[tool.hatch.build.targets.sdist]
+exclude = [
+    # Directories
+    "/.agent",
+    "/.external",
+    "/.github",
+    "/.zed",
+    "/archive",
+    "/docs",
+    "/examples",
+    "/tests",
+    # Config files (not needed for installation)
+    "/.coverage",
+    "/.cursorrules",
+    "/.env",
+    "/.envrc",
+    "/.gitmodules",
+    "/.pre-commit-config.yaml",
+    "/.python-version",
+    "/.rules",
+    "/flake.nix",
+    "/flake.lock",
+    "/uv.lock",
+    # Documentation (README/LICENSE/CHANGELOG are kept)
+    "/CONTRIBUTING.md",
+    "/README.txt",
+]
+
 # UV-specific configuration
 [tool.uv]
 # Prefer binary packages for faster installs
