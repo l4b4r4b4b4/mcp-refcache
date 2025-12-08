@@ -248,7 +248,7 @@ See `.agent/features/access-control.md` for full architecture documentation.
 
 **Completed Tasks:**
 - [x] Updated `RefCache.__init__()` with `tokenizer`, `measurer`, `preview_generator` params
-- [x] Refactored `_create_preview()` to return `PreviewResult` 
+- [x] Refactored `_create_preview()` to return `PreviewResult`
 - [x] Updated `get()` to populate `CacheResponse` with `PreviewResult` metadata
 - [x] Added `original_size` and `preview_size` to `CacheResponse` model
 
@@ -348,7 +348,7 @@ The old `RefCache._create_preview()` was basic:
 - [x] 22 new integration tests
 
 **Known Limitations:**
-1. Sampling happens at top-level only. Deeply nested structures where a single 
+1. Sampling happens at top-level only. Deeply nested structures where a single
    top-level key exceeds `max_size` won't be recursively shrunk.
 2. tiktoken and transformers are optional deps - tests skip when not installed.
 
@@ -376,7 +376,7 @@ The old `RefCache._create_preview()` was basic:
 
 #### Priority 1: FastMCP Integration Example (~2-3 hours to working demo)
 - [ ] Create `examples/mcp_server.py` with working MCP server
-- [ ] Create `examples/README.md` with usage documentation  
+- [ ] Create `examples/README.md` with usage documentation
 - [ ] Update main `README.md` with quick start guide
 - [ ] Test with MCP client (Claude Desktop or similar)
 
@@ -488,16 +488,16 @@ src/mcp_refcache/
 ```python
 class Tokenizer(Protocol):
     """Protocol for tokenizer adapters - exact token counts!"""
-    
+
     @property
     def model_name(self) -> str:
         """The model this tokenizer is for."""
         ...
-    
+
     def encode(self, text: str) -> list[int]:
         """Encode text to token IDs."""
         ...
-    
+
     def count_tokens(self, text: str) -> int:
         """Count tokens in text."""
         ...
@@ -505,7 +505,7 @@ class Tokenizer(Protocol):
 
 class TiktokenAdapter:
     """OpenAI models (gpt-4o, gpt-4, gpt-3.5-turbo)."""
-    
+
     def __init__(self, model: str = "gpt-4o"):
         self._model = model
         self._encoding = None  # Lazy load
@@ -513,7 +513,7 @@ class TiktokenAdapter:
 
 class HuggingFaceAdapter:
     """HF models (Llama, Mistral, Qwen, etc.)."""
-    
+
     def __init__(self, model: str = "meta-llama/Llama-3.1-8B"):
         self._model = model
         self._tokenizer = None  # Lazy load, cached by HF
@@ -530,7 +530,7 @@ class SizeMeasurer(Protocol):
 class TokenMeasurer:
     def __init__(self, tokenizer: Tokenizer):
         self._tokenizer = tokenizer  # DI!
-    
+
     def measure(self, value: Any) -> int:
         text = json.dumps(value, default=str)
         return self._tokenizer.count_tokens(text)
@@ -568,7 +568,7 @@ class Permission(Flag):
     UPDATE = auto()    # Modify existing cached values
     DELETE = auto()    # Remove/invalidate references
     EXECUTE = auto()   # Use value WITHOUT seeing it (blind compute)
-    
+
     CRUD = READ | WRITE | UPDATE | DELETE
     FULL = CRUD | EXECUTE
 ```
@@ -593,6 +593,66 @@ public                          # Global, anyone can read
 - `@cache.cached()` decorator with ref resolution
 - FastMCP integration helpers
 - Langfuse observability (TracedRefCache)
+
+### Future Vision: Specialized Data Store Integration
+
+**Key Insight:** mcp-refcache is for tool outputs and computed results, NOT for source data storage. However, we can integrate with specialized stores for specific data types.
+
+#### Time Series Data (finquant-mcp, market data)
+- **Backend:** TimescaleDB, InfluxDB, or local Parquet files
+- **Pattern:** Incremental fetching - only fetch date ranges not in local store
+- **Hot-swapping:** MCP tool requests data → check local store → fetch missing → cache result
+- **Example flow:**
+  ```
+  get_prices(AAPL, 2024-01-01, 2024-12-31)
+    → Check TimescaleDB: has 2024-01-01 to 2024-06-30
+    → Fetch from Yahoo: 2024-07-01 to 2024-12-31
+    → Store new data in TimescaleDB
+    → Return full range (RefCache caches the tool output)
+  ```
+
+#### Vector Store (news-mcp, semantic search)
+- **Backend:** ChromaDB, Qdrant, Pinecone, or local FAISS
+- **Pattern:** Embeddings stored locally, incrementally updated
+- **Hot-swapping:** New articles → embed → store → available for semantic search
+- **Example flow:**
+  ```
+  search_news("Fed interest rate decision")
+    → Query local vector store
+    → If stale, fetch new articles from news API
+    → Embed and store new articles
+    → Return semantic search results (RefCache caches output)
+  ```
+
+#### Integration Pattern
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    MCP Tool Layer                                │
+│  @cache.cached() for tool outputs                                │
+└─────────────────────────────────────────────────────────────────┘
+                              ↑
+                    tool output caching
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    Domain Data Layer (App's job)                 │
+│  - TimescaleDB for time series (prices, metrics)                 │
+│  - Vector store for embeddings (news, documents)                 │
+│  - PostgreSQL for structured data (users, portfolios)            │
+└─────────────────────────────────────────────────────────────────┘
+                              ↑
+                    incremental fetching
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    External APIs                                 │
+│  - Yahoo Finance, CoinGecko (market data)                        │
+│  - News APIs (articles)                                          │
+│  - Only fetch what's missing locally                             │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**This is out of scope for v0.0.x** - but documented for future MCP integrations.
+
+---
 
 ### v0.0.2 (Next)
 - Valkey/Redis backend for cross-server caching

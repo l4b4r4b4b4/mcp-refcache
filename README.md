@@ -155,7 +155,7 @@ from mcp_refcache import Permission, AccessPolicy
 
 # Permission flags (can be combined with |)
 Permission.READ      # Resolve reference to see value
-Permission.WRITE     # Create new references  
+Permission.WRITE     # Create new references
 Permission.UPDATE    # Modify existing cached values
 Permission.DELETE    # Remove/invalidate references
 Permission.EXECUTE   # Use value in computation WITHOUT seeing it!
@@ -300,21 +300,22 @@ async def process_data(data: list[int]) -> list[float]:
 
 ### v0.0.1 (Current)
 - [x] Core reference-based caching
-- [x] Memory backend with disk persistence
+- [x] Memory backend (thread-safe, TTL support)
 - [x] Preview generation (truncate, sample, paginate)
 - [x] Basic namespace support (public, session, user, custom)
 - [x] CRUD + EXECUTE permission model
 - [x] Separate user/agent access control
 - [x] TTL per namespace
-- [x] Reference metadata (tags, descriptions)
 - [x] FastMCP integration tools
+- [x] Langfuse observability (TracedRefCache)
 
 ### v0.0.2
+- [ ] Valkey/Redis backend (cross-server shared caching)
+- [ ] Reference metadata (tags, descriptions)
 - [ ] Audit logging (who accessed what, when)
 - [ ] Value transformations (redacted views)
 - [ ] Permission delegation (user grants agent temporary access)
 - [ ] Expiring permissions (time-bounded access)
-- [ ] Redis backend improvements
 - [ ] Bulk operations (batch resolve, batch permission check)
 
 ### v0.0.3
