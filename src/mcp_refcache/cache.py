@@ -545,9 +545,9 @@ class RefCache:
 **Preview Size:** {max_size_doc}. Override per-call with `get_cached_result(ref_id, max_size=...)`."""
             func.__doc__ = original_doc + cache_doc
 
-            def _get_context_scoped_values() -> (
-                tuple[str, AccessPolicy | None, Actor | None]
-            ):
+            def _get_context_scoped_values() -> tuple[
+                str, AccessPolicy | None, Actor | None
+            ]:
                 """Get namespace, policy, and actor from FastMCP context.
 
                 Returns:

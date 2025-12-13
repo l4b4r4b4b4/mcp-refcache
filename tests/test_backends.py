@@ -215,7 +215,7 @@ def backend(
             pytest.skip(f"Redis connection failed: {exception}")
 
 
-@pytest.fixture()
+@pytest.fixture
 def sample_entry() -> CacheEntry:
     """Create a sample cache entry for testing."""
     return CacheEntry(
@@ -883,7 +883,7 @@ class TestSQLiteBackendConcurrentProcesses:
 class TestRedisBackendSpecific:
     """Tests specific to RedisBackend functionality."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def redis_backend(self) -> Generator[RedisBackend, None, None]:
         """Create a Redis backend for testing."""
         try:
@@ -1022,7 +1022,7 @@ class TestRedisBackendSpecific:
 class TestRedisBackendConcurrent:
     """Tests for concurrent Redis access."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def redis_backend(self) -> Generator[RedisBackend, None, None]:
         """Create a Redis backend for testing."""
         try:
