@@ -28,6 +28,7 @@ from mcp_refcache.access.namespace import (
 )
 from mcp_refcache.backends.base import CacheBackend, CacheEntry
 from mcp_refcache.backends.memory import MemoryBackend
+from mcp_refcache.backends.sqlite import SQLiteBackend
 from mcp_refcache.cache import RefCache
 from mcp_refcache.context import (
     CharacterFallback,
@@ -120,6 +121,7 @@ __all__ = [
     "RefCache",
     "RefResolver",
     "ResolutionResult",
+    "SQLiteBackend",
     "SampleGenerator",
     "SizeMeasurer",
     "SizeMode",
