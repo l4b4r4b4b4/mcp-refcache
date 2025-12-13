@@ -1,6 +1,6 @@
 # SQLite Backend Implementation
 
-## Status: ✅ COMPLETE
+## Status: ✅ COMPLETE (Tested & Verified)
 
 ## Overview
 
@@ -243,7 +243,7 @@ None - SQLite is in Python stdlib (`sqlite3` module).
 - All 649 tests pass (90 backend tests, 63 new for SQLite)
 - Exported `SQLiteBackend` from `backends/__init__.py` and main `__init__.py`
 
-### Session 2 (Current)
+### Session 2 (Complete)
 - Created `examples/data_tools.py` - second MCP server for cross-tool reference testing
 - Updated `examples/langfuse_integration.py` to use SQLite backend
 - Both servers now share `~/.cache/mcp-refcache/cache.db`
@@ -251,6 +251,9 @@ None - SQLite is in Python stdlib (`sqlite3` module).
 - Added tools: analyze_data, transform_data, aggregate_data, create_sample_data
 - Added `list_shared_cache` tool to view all refs across tools
 - Added `create_policy_example` tool for access policy testing
+- Fixed `get_cached_result` to use correct `CacheResponse` attributes
+- **Verified persistence**: refs survive IDE restart ✅
+- **Verified cross-tool refs**: data-tools resolves langfuse-calculator refs ✅
 
 ## Test Results
 
@@ -258,12 +261,37 @@ None - SQLite is in Python stdlib (`sqlite3` module).
 - Backend tests: 90 total (parametrized across memory, sqlite_memory, sqlite_file)
 - New SQLite-specific tests: persistence, environment variables, concurrent processes
 
-## Cross-Tool Usage Example
+## Cross-Tool Usage Example (Verified Working)
 
 1. In Zed, restart IDE to load both MCP servers
 2. In langfuse-calculator: `generate_primes(count=50)` → returns ref_id
 3. In data-tools: `analyze_data(data="langfuse-calculator:abc123")` → statistics
 4. Use `list_shared_cache()` to see all references from both servers
+
+## Verified Test Results
+
+```
+# 1. Generate primes in langfuse-calculator
+generate_primes(count=20)
+→ {"ref_id": "langfuse-calculator:ec2359fa25d2dfd6", ...}
+
+# 2. Analyze in data-tools (cross-tool ref resolution!)
+analyze_data(data="langfuse-calculator:ec2359fa25d2dfd6")
+→ {"mean": 31.95, "median": 30.0, "std": 22.47, "is_sorted": true, ...}
+
+# 3. List all shared refs
+list_shared_cache()
+→ Shows 3 refs from both servers, persisted in SQLite
+
+# 4. After IDE restart - persistence verified
+list_shared_cache()
+→ All 3 refs still present ✅
+```
+
+## Next Steps
+
+For multi-user/multi-machine scenarios, implement Redis/Valkey backend:
+- See `.agent/scratchpad-redis-backend.md` for implementation plan
 
 ## References
 
