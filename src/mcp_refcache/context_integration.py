@@ -38,7 +38,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from mcp_refcache.access.actor import Actor
+    from mcp_refcache.access.actor import Actor, ActorLike
 
 # Default fallback values for known context keys
 # Used when a template placeholder cannot be resolved from context
@@ -134,8 +134,8 @@ def get_context_values(context: Any) -> dict[str, str]:
             value = getattr(context, attr, None)
             if value is not None:
                 values[attr] = str(value)
-        except Exception:
-            # Ignore any attribute access errors
+        except Exception:  # nosec B110
+            # Ignore any attribute access errors - context may have varying implementations
             pass
 
     # Extract state values set by middleware
@@ -156,8 +156,8 @@ def get_context_values(context: Any) -> dict[str, str]:
                 value = context.get_state(key)
                 if value is not None:
                     values[key] = str(value)
-            except Exception:
-                # Ignore missing keys or errors
+            except Exception:  # nosec B110
+                # Ignore missing keys or errors - state may not be set
                 pass
 
     return values
@@ -200,7 +200,7 @@ def try_get_fastmcp_context() -> Any | None:
 
 def derive_actor_from_context(
     context_values: dict[str, str],
-    default_actor: str = "agent",
+    default_actor: ActorLike = "agent",
 ) -> Actor:
     """Derive an Actor from context values.
 

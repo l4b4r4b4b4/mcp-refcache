@@ -7,3 +7,6 @@
 [submodule "examples/BundesMCP"]
 	path = examples/BundesMCP
 	url = https://github.com/l4b4r4b4b4/BundesMCP
+[submodule "examples/fastmcp-template"]
+	path = examples/fastmcp-template
+	url = git@github.com:l4b4r4b4b4/fastmcp-template.git

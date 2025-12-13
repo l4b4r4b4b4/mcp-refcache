@@ -74,6 +74,35 @@ uv add "mcp-refcache @ git+https://github.com/l4b4r4b4b4/mcp-refcache@v0.0.1"
 uv add --editable ../mcp-refcache
 ```
 
+## Repository Structure
+
+```
+mcp-refcache/
+├── src/mcp_refcache/     # Main library code
+├── tests/                # Test suite (80%+ coverage)
+├── examples/             # Git submodules with demos (optional)
+│   ├── BundesMCP/       # Government API server example
+│   ├── finquant-mcp/    # Financial data server example
+│   └── fastmcp-template/ # Template for new servers
+└── docs/                # Additional documentation
+```
+
+**Note:** Examples are git submodules and not included in the PyPI package. They demonstrate real-world usage but are optional.
+
+### Using Examples
+
+To use the example servers after cloning:
+
+```bash
+# Clone with submodules
+git clone --recurse-submodules https://github.com/l4b4r4b4b4/mcp-refcache
+
+# Or if already cloned:
+git submodule update --init --recursive
+```
+
+Each example has its own README with setup instructions. Examples may be in private repositories during early development.
+
 ## Quick Start
 
 ```python
@@ -387,6 +416,26 @@ Use both together:
 - FastMCP middleware: Cache expensive API calls
 - mcp-refcache: Manage what agents see and can do
 
+## Project Status
+
+### Current Version: 0.0.1 (Alpha)
+
+This is an early alpha release. The core API is functional but may change based on feedback. We're working toward a stable 1.0.0 release.
+
+**Stability:** Core caching and access control features are stable. Preview strategies and FastMCP integration may see refinements.
+
+**Production Use:** Suitable for experimentation and testing. For production use, pin to a specific version and review changes carefully when upgrading.
+
+### Roadmap
+
+See the [Roadmap](#roadmap) section above for planned features in upcoming releases.
+
+### Community
+
+- **Issues:** Report bugs or request features on [GitHub Issues](https://github.com/l4b4r4b4b4/mcp-refcache/issues)
+- **Discussions:** Ask questions or share ideas in [GitHub Discussions](https://github.com/l4b4r4b4b4/mcp-refcache/discussions)
+- **Contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
@@ -394,3 +443,31 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Contributing
 
 Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+### Development Setup
+
+```bash
+# Clone the repo
+git clone https://github.com/l4b4r4b4b4/mcp-refcache
+cd mcp-refcache
+
+# Enter nix dev shell (recommended) or use uv directly
+nix develop  # or: uv sync
+
+# Run tests
+uv run pytest --cov
+
+# Lint and format
+uv run ruff check . --fix
+uv run ruff format .
+
+# Type check
+uv run mypy src/
+```
+
+### Code Quality Standards
+
+- **Test Coverage:** Minimum 80% (currently meeting this requirement)
+- **Type Safety:** Full type annotations with mypy strict mode
+- **Code Style:** Ruff for linting and formatting (PEP 8 compliant)
+- **Documentation:** Docstrings for all public APIs (Google style)

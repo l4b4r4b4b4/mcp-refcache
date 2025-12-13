@@ -436,12 +436,12 @@ class TracedRefCache:
         ):
             try:
                 result = self._cache.get(ref_id, actor=actor, **kwargs)
-                is_hit = result is not None and result.value is not None
+                is_hit = result is not None and result.preview is not None
 
                 span.update(
                     output={
                         "cache_hit": is_hit,
-                        "is_complete": getattr(result, "is_complete", None),
+                        "preview_strategy": getattr(result, "preview_strategy", None),
                     },
                     metadata={
                         "cacheoperation": "get",
@@ -909,7 +909,7 @@ def calculate(expression: str) -> dict[str, Any]:
 @mcp.tool
 @observe(name="generate_fibonacci")
 @cache.cached(namespace="sequences", max_size=50)
-async def generate_fibonacci(count: int = 20) -> dict[str, Any]:
+async def generate_fibonacci(count: int = 20) -> list[int]:
     """Generate Fibonacci sequence with caching and Langfuse tracing.
 
     The result is cached and traced with full context propagation.
@@ -924,11 +924,6 @@ async def generate_fibonacci(count: int = 20) -> dict[str, Any]:
 
     Returns:
         Cache response dict with ref_id, value/preview, and pagination info.
-
-    **Caching Behavior:**
-    - Any input parameter can accept a ref_id from a previous tool call
-    - Large results return ref_id + preview; use get_cached_result to paginate
-    - All responses include ref_id for future reference
     """
     # Get Langfuse attributes and propagate to all child spans
     attributes = get_langfuse_attributes(
@@ -960,7 +955,7 @@ async def generate_fibonacci(count: int = 20) -> dict[str, Any]:
 @mcp.tool
 @observe(name="generate_primes")
 @cache.cached(namespace="sequences", max_size=50)
-async def generate_primes(count: int = 20) -> dict[str, Any]:
+async def generate_primes(count: int = 20) -> list[int]:
     """Generate prime numbers with caching and Langfuse tracing.
 
     The result is cached and traced with full context propagation.
@@ -975,11 +970,6 @@ async def generate_primes(count: int = 20) -> dict[str, Any]:
 
     Returns:
         Cache response dict with ref_id, value/preview, and pagination info.
-
-    **Caching Behavior:**
-    - Any input parameter can accept a ref_id from a previous tool call
-    - Large results return ref_id + preview; use get_cached_result to paginate
-    - All responses include ref_id for future reference
     """
     # Get Langfuse attributes and propagate to all child spans
     attributes = get_langfuse_attributes(

@@ -11,8 +11,7 @@ import hashlib
 import inspect
 import json
 import time
-from collections.abc import Callable  # noqa: TC003 - used at runtime in type hints
-from typing import Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from mcp_refcache.access.actor import Actor, ActorLike, resolve_actor
 from mcp_refcache.access.checker import (
@@ -49,6 +48,9 @@ from mcp_refcache.preview import (
     get_default_generator,
 )
 from mcp_refcache.resolution import resolve_args_and_kwargs
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # Type variables for decorator
 P = ParamSpec("P")
@@ -444,12 +446,12 @@ class RefCache:
         ttl: float | None = None,
         max_size: int | None = None,
         resolve_refs: bool = True,
-        actor: str = "agent",
+        actor: ActorLike = "agent",
         # Context-scoped parameters
         namespace_template: str | None = None,
         owner_template: str | None = None,
         session_scoped: bool = False,
-    ) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    ) -> Callable[[Callable[P, R]], Callable[P, dict[str, Any]]]:
         """Decorator to cache function results and return structured responses.
 
         This decorator provides full MCP tool integration:
@@ -521,7 +523,7 @@ class RefCache:
             or session_scoped
         )
 
-        def decorator(func: Callable[P, R]) -> Callable[P, dict[str, Any]]:
+        def decorator(func: Callable[P, Any]) -> Callable[P, dict[str, Any]]:
             is_async = inspect.iscoroutinefunction(func)
 
             # Inject cache documentation into docstring
@@ -543,9 +545,9 @@ class RefCache:
 **Preview Size:** {max_size_doc}. Override per-call with `get_cached_result(ref_id, max_size=...)`."""
             func.__doc__ = original_doc + cache_doc
 
-            def _get_context_scoped_values() -> tuple[
-                str, AccessPolicy | None, Actor | None
-            ]:
+            def _get_context_scoped_values() -> (
+                tuple[str, AccessPolicy | None, Actor | None]
+            ):
                 """Get namespace, policy, and actor from FastMCP context.
 
                 Returns:
@@ -594,8 +596,8 @@ class RefCache:
                 if not resolve_refs:
                     return args, kwargs
 
-                # Use context-derived actor if available
-                actor_for_resolution = (
+                # Use context-derived actor if available, default to "agent"
+                actor_for_resolution: ActorLike = (
                     effective_actor if effective_actor is not None else actor
                 )
 
@@ -703,11 +705,19 @@ class RefCache:
                     return _build_response(ref.ref_id, result)
 
                 # Update return annotation for FastMCP schema generation
+                # Both __annotations__ AND __signature__ must be updated because
+                # functools.wraps copies the original signature, and inspect.signature()
+                # uses __wrapped__ to return the original signature, ignoring __annotations__
                 async_wrapper.__annotations__ = {
                     **func.__annotations__,
                     "return": dict[str, Any],
                 }
-                return async_wrapper  # type: ignore
+                # Update __signature__ so inspect.signature() returns correct type
+                original_sig = inspect.signature(func)
+                async_wrapper.__signature__ = original_sig.replace(  # type: ignore[attr-defined]
+                    return_annotation=dict[str, Any]
+                )
+                return async_wrapper  # type: ignore[return-value]
             else:
 
                 @functools.wraps(func)
@@ -757,11 +767,19 @@ class RefCache:
                     return _build_response(ref.ref_id, result)
 
                 # Update return annotation for FastMCP schema generation
+                # Both __annotations__ AND __signature__ must be updated because
+                # functools.wraps copies the original signature, and inspect.signature()
+                # uses __wrapped__ to return the original signature, ignoring __annotations__
                 sync_wrapper.__annotations__ = {
                     **func.__annotations__,
                     "return": dict[str, Any],
                 }
-                return sync_wrapper  # type: ignore
+                # Update __signature__ so inspect.signature() returns correct type
+                original_sig = inspect.signature(func)
+                sync_wrapper.__signature__ = original_sig.replace(  # type: ignore[attr-defined]
+                    return_annotation=dict[str, Any]
+                )
+                return sync_wrapper
 
         return decorator
 
@@ -779,7 +797,9 @@ class RefCache:
         """Create a namespaced key for internal lookups."""
         return f"{namespace}:{key}"
 
-    def _make_cache_key(self, func: Callable, args: tuple, kwargs: dict) -> str:
+    def _make_cache_key(
+        self, func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
+    ) -> str:
         """Create a cache key from function and arguments."""
         # Create a deterministic key from function name and arguments
         key_parts = [func.__module__, func.__qualname__]
@@ -844,7 +864,7 @@ class RefCache:
 
     def _count_items(self, value: Any) -> int | None:
         """Count items in a collection."""
-        if isinstance(value, (list, tuple, set, frozenset)):
+        if isinstance(value, list | tuple | set | frozenset):
             return len(value)
         if isinstance(value, dict):
             return len(value)

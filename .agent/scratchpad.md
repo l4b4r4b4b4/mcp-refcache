@@ -1,8 +1,8 @@
 # mcp-refcache Development Scratchpad
 
-## Current Status: v0.0.1 READY TO SHIP ✅
+## Current Status: Pre-Release Feature Development 🔧
 
-**Last Updated**: Session 10 Complete
+**Last Updated**: Pre-Release Feature Planning
 
 ### v0.0.1 Feature Checklist
 
@@ -29,7 +29,453 @@
 
 ---
 
-## Tonight's Plan: MCP Integration + Cross-Server Caching
+## Current Session: Pre-Release Feature Development
+
+### User Decision: Add Key Features Before v0.0.1 Release
+
+Before going public, implement two critical features:
+
+1. **Automatic Type Extension for FastMCP Tools**
+   - Problem: Currently, decorated tools need manual type annotations to match cache response structure
+   - Solution: Decorator should automatically transform return type annotations
+   - Impact: Better MCP client experience (no schema complaints)
+
+2. **SQLite Backend for Cross-Process Caching**
+   - Problem: Memory backend only works within a single process
+   - Solution: Implement SQLite backend before jumping to Valkey
+   - Benefits:
+     - Cross-process caching (file-based)
+     - No external service needed
+     - Persistent storage
+     - Natural stepping stone to Valkey
+     - Easy testing
+
+3. **Test Coverage Adjustment**
+   - Update `pyproject.toml`: Change `fail_under = 80` to `fail_under = 73`
+
+4. **Example .env File**
+   - Create `.env.example` for examples that need configuration
+
+### Implementation Plan
+
+#### Task 1: Automatic Type Extension for @cache.cached() Decorator
+
+**Current Behavior:**
+```python
+@mcp.tool
+@cache.cached(namespace="data")
+async def generate_sequence(count: int) -> list[int]:
+    """Generate sequence."""
+    return list(range(count))
+```
+
+The decorated function returns `dict[str, Any]` (CacheResponse structure), but the type annotation says `list[int]`. This causes MCP schema mismatches.
+
+**Desired Behavior:**
+```python
+@mcp.tool
+@cache.cached(namespace="data")
+async def generate_sequence(count: int) -> list[int]:
+    """Generate sequence."""
+    return list(range(count))
+```
+
+The decorator should automatically transform the return type to `dict[str, Any]` or ideally a `CacheResponse` TypedDict so MCP clients see the correct schema.
+
+**Implementation Approach:**
+1. Use `typing.get_type_hints()` to extract original return type
+2. Store original type in wrapper metadata
+3. Update wrapper's `__annotations__` to reflect actual return type
+4. Optionally: Create a `CacheResponse` TypedDict for better typing
+
+**Files to Modify:**
+- `src/mcp_refcache/cache.py` - Update `cached()` decorator
+- `src/mcp_refcache/models.py` - Add `CacheResponseDict` TypedDict
+- `tests/test_cache.py` - Add tests for type annotation transformation
+- `examples/mcp_server.py` - Remove manual type annotations (should work automatically)
+
+**Edge Cases:**
+- Generic return types (List[T], Dict[K, V])
+- Union types
+- Optional types
+- Complex nested types
+
+#### Task 2: SQLite Backend Implementation
+
+**Requirements:**
+- Implement `CacheBackend` protocol with SQLite storage
+- Thread-safe operations (sqlite3 is not thread-safe by default)
+- TTL support with automatic expiration
+- Efficient ref_id lookups
+- Namespace isolation
+- Cross-process compatibility
+
+**Schema Design:**
+```sql
+CREATE TABLE cache_entries (
+    ref_id TEXT PRIMARY KEY,
+    namespace TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value_json TEXT NOT NULL,
+    policy_json TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    expires_at REAL,
+    metadata_json TEXT,
+    UNIQUE(namespace, key)
+);
+
+CREATE INDEX idx_namespace ON cache_entries(namespace);
+CREATE INDEX idx_expires_at ON cache_entries(expires_at) WHERE expires_at IS NOT NULL;
+CREATE INDEX idx_namespace_key ON cache_entries(namespace, key);
+```
+
+**Implementation Strategy:**
+1. Create `src/mcp_refcache/backends/sqlite.py`
+2. Use `threading.local()` for connection-per-thread
+3. Use WAL mode for better concurrency
+4. Implement background expiration cleanup (optional)
+5. JSON serialization for values and policies
+
+**Files to Create/Modify:**
+- `src/mcp_refcache/backends/sqlite.py` - New SQLite backend
+- `src/mcp_refcache/backends/__init__.py` - Export SqliteBackend
+- `tests/test_backends.py` - Add SQLite backend tests
+- `tests/conftest.py` - Add sqlite backend fixture
+- `README.md` - Document SQLite backend usage
+- `pyproject.toml` - No new dependencies (sqlite3 is in stdlib)
+
+**Example Usage:**
+```python
+from mcp_refcache import RefCache
+from mcp_refcache.backends import SqliteBackend
+
+# In-memory SQLite (testing)
+cache = RefCache(backend=SqliteBackend(":memory:"))
+
+# File-based (production)
+cache = RefCache(backend=SqliteBackend("cache.db"))
+
+# With custom settings
+backend = SqliteBackend(
+    path="cache.db",
+    timeout=5.0,
+    check_same_thread=False,  # Allow cross-thread access
+    isolation_level="DEFERRED",
+)
+cache = RefCache(backend=backend)
+```
+
+#### Task 3: Update Test Coverage Requirement
+
+**Change:**
+```toml
+# pyproject.toml
+[tool.coverage.report]
+fail_under = 73  # Changed from 80
+```
+
+**Justification:**
+- Current coverage: 91% (well above requirement)
+- Lowering minimum allows flexibility during rapid development
+- Still maintains high coverage standards
+
+#### Task 4: Create Example .env File
+
+**Create `.env.example` in repository root:**
+```bash
+# mcp-refcache Example Configuration
+
+# Cache Backend Settings
+# CACHE_BACKEND=memory|sqlite|redis
+CACHE_BACKEND=memory
+
+# SQLite Backend (when CACHE_BACKEND=sqlite)
+# CACHE_SQLITE_PATH=cache.db
+# CACHE_SQLITE_PATH=:memory:  # For testing
+
+# Redis Backend (when CACHE_BACKEND=redis)
+# REDIS_URL=redis://localhost:6379/0
+
+# Preview Configuration
+# CACHE_PREVIEW_MAX_SIZE=1024
+# CACHE_PREVIEW_STRATEGY=sample|truncate|paginate
+
+# Namespace Configuration
+# CACHE_DEFAULT_NAMESPACE=public
+# CACHE_DEFAULT_TTL=3600
+
+# FastMCP Server Settings (for examples/)
+# MCP_SERVER_NAME=MyServer
+# MCP_SERVER_TRANSPORT=stdio|sse
+# MCP_SERVER_PORT=8000
+
+# Example-Specific Settings
+# API_KEY=your_api_key_here
+# LOG_LEVEL=INFO
+```
+
+**Also create `examples/.env.example`:**
+```bash
+# Example MCP Server Configuration
+
+# Server Settings
+SERVER_NAME=Scientific Calculator
+SERVER_TRANSPORT=stdio
+SERVER_PORT=8000
+
+# Cache Settings
+CACHE_BACKEND=sqlite
+CACHE_SQLITE_PATH=examples/cache.db
+CACHE_MAX_SIZE=2000
+
+# Logging
+LOG_LEVEL=INFO
+```
+
+### Implementation Timeline
+
+**Phase 1: Type Extension (2-3 hours)**
+- [ ] Create `CacheResponseDict` TypedDict in models.py
+- [ ] Update `cached()` decorator to transform type annotations
+- [ ] Add comprehensive tests for type transformation
+- [ ] Update examples to rely on automatic typing
+- [ ] Test with FastMCP to ensure MCP schema is correct
+
+**Phase 2: SQLite Backend (3-4 hours)**
+- [ ] Implement `SqliteBackend` class
+- [ ] Add thread-safety mechanisms
+- [ ] Implement full `CacheBackend` protocol
+- [ ] Write comprehensive backend tests
+- [ ] Add integration tests with `RefCache`
+- [ ] Document usage in README
+- [ ] Add example using SQLite backend
+
+**Phase 3: Configuration & Cleanup (1 hour)**
+- [ ] Update test coverage requirement to 73%
+- [ ] Create `.env.example` files
+- [ ] Add .env to .gitignore (already there)
+- [ ] Update documentation
+
+**Phase 4: Testing & Validation (1 hour)**
+- [ ] Run full test suite
+- [ ] Test examples with new features
+- [ ] Verify SQLite backend works cross-process
+- [ ] Check MCP client compatibility with type extensions
+
+**Total Estimated Time: 7-9 hours**
+
+### Success Criteria
+
+**Type Extension:**
+- ✅ Decorated functions automatically get correct return type
+- ✅ MCP clients see proper schema (no complaints)
+- ✅ Original type hints preserved in metadata
+- ✅ Works with async and sync functions
+- ✅ Examples run without manual type annotations
+
+**SQLite Backend:**
+- ✅ Implements full `CacheBackend` protocol
+- ✅ Thread-safe operations
+- ✅ Cross-process compatibility verified
+- ✅ TTL and expiration work correctly
+- ✅ Performance acceptable for typical use cases
+- ✅ >= 80% test coverage for new code
+
+**Overall:**
+- ✅ All existing tests pass
+- ✅ New tests pass with >= 73% total coverage
+- ✅ Documentation updated
+- ✅ Examples work with new features
+- ✅ Ready for public v0.0.1 release
+
+---
+
+## Previous: Open Source Release Preparation
+
+### Overview
+
+Preparing mcp-refcache for public release on GitHub and PyPI.
+
+### Release Plan (User's Preferred Order)
+
+1. ✅ Make mcp-refcache repo public
+2. 🔄 Make mcp-refcache release on PyPI (v0.0.1)
+3. ⏳ Use the PyPI release in fastmcp-template
+4. ⏳ Make fastmcp-template public
+5. ⏳ Use PyPI release in other MCP server examples
+
+### Tasks Breakdown
+
+#### Task 1: Pre-Release Cleanup ✅
+
+**What to Review:**
+- [x] LICENSE file exists and is correct (MIT, present)
+- [x] README.md references LICENSE correctly
+- [x] pyproject.toml is ready for PyPI:
+  - Version: 0.0.1 ✅
+  - License: MIT ✅
+  - URLs configured ✅
+  - Dependencies properly declared ✅
+  - Build system configured (hatchling) ✅
+  - Proper excludes for sdist ✅
+- [x] .gitignore properly excludes build artifacts and local files
+- [x] Examples directory structure reviewed
+
+**Findings:**
+- ✅ LICENSE file exists with MIT license
+- ✅ README already references LICENSE correctly
+- ✅ pyproject.toml is well-configured for PyPI
+- ✅ .gitignore is comprehensive
+- ⚠️ Examples contain git submodules (BundesMCP, finquant-mcp, fastmcp-template)
+
+**Submodule Handling:**
+- Submodules in examples/ directory:
+  - `examples/BundesMCP` - git submodule
+  - `examples/finquant-mcp` - git submodule
+  - `examples/fastmcp-template` - git submodule (not in .gitmodules yet)
+- Submodules are excluded from sdist builds (good!)
+- Submodules should remain as examples once dependent repos are public
+- For now: Document that examples require separate setup
+
+#### Task 2: Documentation Polish
+
+**README.md updates needed:**
+- ✅ LICENSE badge and link present
+- ✅ Installation instructions for PyPI
+- ✅ Git installation instructions (for pre-release)
+- Consider adding:
+  - PyPI badge (after publishing)
+  - CI/CD badge (if adding GitHub Actions)
+  - Downloads badge
+
+#### Task 3: PyPI Publishing Prep
+
+**Pre-flight checks:**
+```bash
+# 1. Clean build
+uv build
+
+# 2. Check package contents
+tar -tzf dist/mcp-refcache-0.0.1.tar.gz
+unzip -l dist/mcp_refcache-0.0.1-py3-none-any.whl
+
+# 3. Test installation in clean env
+uv venv test-env
+source test-env/bin/activate
+pip install dist/mcp_refcache-0.0.1-py3-none-any.whl
+python -c "from mcp_refcache import RefCache; print('OK')"
+deactivate
+rm -rf test-env
+
+# 4. Run full test suite
+uv run pytest --cov
+
+# 5. Security audit
+uv run pip-audit
+
+# 6. Publish to TestPyPI first
+uv publish --publish-url https://test.pypi.org/legacy/
+
+# 7. Test from TestPyPI
+pip install --index-url https://test.pypi.org/simple/ mcp-refcache
+
+# 8. If all good, publish to PyPI
+uv publish
+```
+
+**Required credentials:**
+- PyPI account token (via `~/.pypirc` or env var)
+- Or use: `uv publish --token <token>`
+
+#### Task 4: GitHub Repository Public Release
+
+**Before making public:**
+- [ ] Review all files for sensitive data
+- [ ] Check .github/workflows if present
+- [ ] Review issue templates
+- [ ] Set repository description
+- [ ] Add topics: mcp, fastmcp, cache, llm, ai-agents, python
+
+**After making public:**
+- [ ] Update repository visibility
+- [ ] Add README badges for PyPI version/downloads
+- [ ] Create v0.0.1 release with tag
+- [ ] Write release notes in GitHub
+
+#### Task 5: Submodule Examples Strategy
+
+**Current state:**
+- fastmcp-template, BundesMCP, finquant-mcp are git submodules
+- They currently use local/git dependency on mcp-refcache
+- Need to update to use PyPI after release
+
+**Update sequence:**
+1. Publish mcp-refcache to PyPI
+2. Update each example's pyproject.toml:
+   ```toml
+   # From:
+   dependencies = ["mcp-refcache @ git+https://github.com/..."]
+   # To:
+   dependencies = ["mcp-refcache>=0.0.1"]
+   ```
+3. Test each example works with PyPI version
+4. Make example repos public
+5. Update .gitmodules to point to public URLs (already done)
+
+**For users cloning mcp-refcache:**
+- Document that examples require: `git submodule update --init --recursive`
+- Or skip examples: just clone without --recurse-submodules
+
+#### Task 6: Documentation Updates
+
+**Add to README or separate INSTALL.md:**
+```markdown
+## Examples Setup
+
+The examples directory contains git submodules. To use them:
+
+```bash
+# Clone with submodules
+git clone --recurse-submodules https://github.com/l4b4r4b4b4/mcp-refcache
+
+# Or if already cloned:
+git submodule update --init --recursive
+```
+
+Each example has its own README with setup instructions.
+```
+
+### Open Questions
+
+1. **Submodule strategy:** Keep examples as submodules or copy into main repo?
+   - **Recommendation:** Keep as submodules. Allows independent development.
+   - Users who just want the library don't need examples.
+   - Users who want examples can clone with --recurse-submodules.
+
+2. **PyPI extras for examples:** Should we add a `[examples]` extra?
+   - **Recommendation:** No. Examples are demos, not part of the library.
+   - Keep extras focused on library features (redis, mcp, tiktoken, etc.)
+
+3. **CI/CD:** Add GitHub Actions for automated testing/publishing?
+   - **Recommendation:** Add later. Manual release for v0.0.1 is fine.
+   - Can add in v0.0.2 with: pytest, ruff, mypy, coverage reports
+
+### Next Steps
+
+1. ✅ Review current state (DONE)
+2. User approval of plan
+3. Build and test package locally
+4. Publish to TestPyPI
+5. Test installation from TestPyPI
+6. Publish to PyPI
+7. Make GitHub repo public
+8. Create v0.0.1 release/tag
+9. Update example repos to use PyPI version
+10. Make example repos public
+
+---
+
+## Archived: MCP Integration + Cross-Server Caching
 
 ### Goal
 Integrate mcp-refcache with real MCP servers, then build toward cross-server caching with Valkey.

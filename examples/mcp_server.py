@@ -958,13 +958,13 @@ def reset_test_context() -> dict[str, Any]:
 
 
 # Context-scoped tool example
+@mcp.tool
 @cache.cached(
     namespace_template="org:{org_id}:user:{user_id}",
     owner_template="user:{user_id}",
     session_scoped=True,
     ttl=300,  # 5 minutes
 )
-@mcp.tool
 async def get_user_profile(include_preferences: bool = False) -> dict[str, Any]:
     """Get the current user's profile (context-scoped caching demo).
 
@@ -1019,12 +1019,12 @@ async def get_user_profile(include_preferences: bool = False) -> dict[str, Any]:
     return profile
 
 
+@mcp.tool
 @cache.cached(
     namespace_template="user:{user_id}:data",
     owner_template="user:{user_id}",
     ttl=600,  # 10 minutes
 )
-@mcp.tool
 async def store_user_data(key: str, value: str) -> dict[str, Any]:
     """Store user-scoped data (context-scoped caching demo).
 

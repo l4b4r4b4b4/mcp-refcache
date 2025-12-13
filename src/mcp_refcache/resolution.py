@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from mcp_refcache.access.actor import ActorLike
     from mcp_refcache.cache import RefCache
 
 # Pattern for ref_id: cachename:hexhash (e.g., "finquant:2780226d27c57e49")
@@ -120,7 +121,7 @@ class RefResolver:
         self,
         cache: RefCache,
         *,
-        actor: str = "agent",
+        actor: ActorLike = "agent",
         fail_on_missing: bool = True,
     ) -> None:
         """Initialize the resolver.
@@ -132,7 +133,7 @@ class RefResolver:
                 If False, collect errors and continue.
         """
         self._cache = cache
-        self._actor = actor
+        self._actor: ActorLike = actor
         self._fail_on_missing = fail_on_missing
 
     def resolve(
@@ -274,7 +275,7 @@ class RefResolver:
             return True
         if isinstance(value, dict):
             return any(self._contains_ref_ids(v) for v in value.values())
-        if isinstance(value, (list, tuple)):
+        if isinstance(value, list | tuple):
             return any(self._contains_ref_ids(item) for item in value)
         return False
 
@@ -283,7 +284,7 @@ def resolve_refs(
     cache: RefCache,
     value: Any,
     *,
-    actor: str = "agent",
+    actor: ActorLike = "agent",
     fail_on_missing: bool = True,
 ) -> ResolutionResult:
     """Convenience function to resolve all ref_ids in a value.
@@ -319,7 +320,7 @@ def resolve_kwargs(
     cache: RefCache,
     kwargs: dict[str, Any],
     *,
-    actor: str = "agent",
+    actor: ActorLike = "agent",
     fail_on_missing: bool = True,
 ) -> ResolutionResult:
     """Resolve all ref_ids in function kwargs.
@@ -358,7 +359,7 @@ def resolve_args_and_kwargs(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
     *,
-    actor: str = "agent",
+    actor: ActorLike = "agent",
     fail_on_missing: bool = True,
 ) -> tuple[ResolutionResult, ResolutionResult]:
     """Resolve all ref_ids in both args and kwargs.
