@@ -10,3 +10,6 @@
 [submodule "examples/fastmcp-template"]
 	path = examples/fastmcp-template
 	url = git@github.com:l4b4r4b4b4/fastmcp-template.git
+[submodule "examples/ifc-mcp"]
+	path = examples/ifc-mcp
+	url = git@github.com:AIS-AI-Team/ifc-mcp.git
