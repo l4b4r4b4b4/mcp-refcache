@@ -580,12 +580,23 @@ async def get_cached_result(
 
         langfuse.flush()
 
+        # CacheResponse has preview (not value) and no is_complete attribute
+        # Determine if complete by comparing preview_size to original_size
+        preview_size = response.preview_size or 0
+        original_size = response.original_size or 0
+        is_complete = preview_size >= original_size
+
         return {
             "ref_id": response.ref_id,
-            "value": response.value if hasattr(response, "value") else response.preview,
+            "namespace": response.namespace,
             "preview": response.preview,
-            "is_complete": response.is_complete,
+            "is_complete": is_complete,
+            "preview_strategy": response.preview_strategy.value
+            if response.preview_strategy
+            else None,
             "total_items": response.total_items,
+            "original_size": response.original_size,
+            "preview_size": response.preview_size,
             "page": response.page,
             "total_pages": response.total_pages,
         }
@@ -663,7 +674,6 @@ async def create_policy_example(
     Returns:
         Reference with access policy information.
     """
-
     attributes = get_langfuse_attributes()
 
     with propagate_attributes(
