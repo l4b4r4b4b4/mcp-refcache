@@ -83,6 +83,7 @@ from mcp_refcache import (  # noqa: E402
     PreviewConfig,
     PreviewStrategy,
     RefCache,
+    SQLiteBackend,
 )
 from mcp_refcache.fastmcp import cache_instructions  # noqa: E402
 
@@ -294,12 +295,19 @@ Enable test mode with enable_test_context() to simulate different users.
 )
 
 # =============================================================================
-# Initialize RefCache with Langfuse-aware wrapper
+# Initialize RefCache with SQLite Backend for Cross-Tool Sharing
 # =============================================================================
 
-# Create the base cache
+# Use SQLite backend for persistence and cross-tool reference sharing
+# Default path: ~/.cache/mcp-refcache/cache.db (shared with data-tools server)
+_sqlite_backend = SQLiteBackend()
+
+print(f"SQLite cache path: {_sqlite_backend.database_path}", file=sys.stderr)
+
+# Create the base cache with SQLite backend
 _cache = RefCache(
     name="langfuse-calculator",
+    backend=_sqlite_backend,
     default_ttl=3600,
     preview_config=PreviewConfig(
         max_size=64,

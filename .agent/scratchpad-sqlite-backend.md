@@ -1,6 +1,6 @@
 # SQLite Backend Implementation
 
-## Status: ✅ PHASE 1 COMPLETE
+## Status: ✅ COMPLETE
 
 ## Overview
 
@@ -119,9 +119,10 @@ tests/
 ### Phase 3: Integration ✅ COMPLETE
 - [x] Update `backends/__init__.py` to export SQLiteBackend
 - [x] Update main `__init__.py` to export SQLiteBackend
-- [ ] Add `backend` parameter to `RefCache.__init__()` - ALREADY EXISTS
-- [ ] Add example showing cross-tool reference sharing
-- [ ] Update documentation
+- [x] `backend` parameter already exists in `RefCache.__init__()`
+- [x] Add example showing cross-tool reference sharing (`data_tools.py`)
+- [x] Update `langfuse_integration.py` to use SQLite backend
+- [x] Update `.zed/settings.json` with data-tools server config
 
 ### Phase 4: Polish
 - [ ] Connection pooling (if needed for performance)
@@ -233,7 +234,7 @@ None - SQLite is in Python stdlib (`sqlite3` module).
 
 ## Session Log
 
-### Session 1 (Current)
+### Session 1
 - Created scratchpad with design decisions
 - Implemented `SQLiteBackend` class with all protocol methods
 - Fixed `AccessPolicy` serialization (use `mode='json'` for Permission enums)
@@ -242,11 +243,27 @@ None - SQLite is in Python stdlib (`sqlite3` module).
 - All 649 tests pass (90 backend tests, 63 new for SQLite)
 - Exported `SQLiteBackend` from `backends/__init__.py` and main `__init__.py`
 
+### Session 2 (Current)
+- Created `examples/data_tools.py` - second MCP server for cross-tool reference testing
+- Updated `examples/langfuse_integration.py` to use SQLite backend
+- Both servers now share `~/.cache/mcp-refcache/cache.db`
+- Updated `.zed/settings.json` with data-tools server configuration
+- Added tools: analyze_data, transform_data, aggregate_data, create_sample_data
+- Added `list_shared_cache` tool to view all refs across tools
+- Added `create_policy_example` tool for access policy testing
+
 ## Test Results
 
 - 649 passed, 3 skipped
 - Backend tests: 90 total (parametrized across memory, sqlite_memory, sqlite_file)
 - New SQLite-specific tests: persistence, environment variables, concurrent processes
+
+## Cross-Tool Usage Example
+
+1. In Zed, restart IDE to load both MCP servers
+2. In langfuse-calculator: `generate_primes(count=50)` → returns ref_id
+3. In data-tools: `analyze_data(data="langfuse-calculator:abc123")` → statistics
+4. Use `list_shared_cache()` to see all references from both servers
 
 ## References
 
