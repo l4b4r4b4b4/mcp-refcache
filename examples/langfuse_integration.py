@@ -558,7 +558,7 @@ class TracedRefCache:
 
             if asyncio.iscoroutinefunction(func):
 
-                @functools.wraps(func)
+                @functools.wraps(cached_func)
                 async def async_traced_wrapper(
                     *args: P.args, **kwargs: P.kwargs
                 ) -> dict[str, Any]:
@@ -626,7 +626,7 @@ class TracedRefCache:
                 return async_traced_wrapper  # type: ignore
             else:
 
-                @functools.wraps(func)
+                @functools.wraps(cached_func)
                 def sync_traced_wrapper(
                     *args: P.args, **kwargs: P.kwargs
                 ) -> dict[str, Any]:
