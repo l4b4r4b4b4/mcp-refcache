@@ -83,7 +83,15 @@ from mcp_refcache.resolution import (
     resolve_refs,
 )
 
-__version__ = "0.0.1"
+# RedisBackend is optional - only available if redis package is installed
+try:
+    from mcp_refcache.backends.redis import RedisBackend as RedisBackend
+
+    _REDIS_AVAILABLE = True
+except ImportError:
+    _REDIS_AVAILABLE = False
+
+__version__ = "0.1.0"
 
 __all__ = [
     "DEFAULT_FALLBACKS",
@@ -144,3 +152,6 @@ __all__ = [
     "resolve_refs",
     "try_get_fastmcp_context",
 ]
+
+if _REDIS_AVAILABLE:
+    __all__.append("RedisBackend")

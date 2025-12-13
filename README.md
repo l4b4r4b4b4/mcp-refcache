@@ -4,7 +4,8 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.0.1-green.svg)](https://github.com/l4b4r4b4b4/mcp-refcache)
+[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://pypi.org/project/mcp-refcache/)
+[![PyPI](https://img.shields.io/pypi/v/mcp-refcache.svg)](https://pypi.org/project/mcp-refcache/)
 
 ## Overview
 
@@ -57,10 +58,14 @@ uv add "mcp-refcache[redis]"
 # With FastMCP integration (cache management tools)
 uv add "mcp-refcache[mcp]"
 
+# With SQLite backend (persistent, cross-tool sharing)
+# No extra install needed - SQLite is in Python stdlib!
+
 # Everything
 uv add "mcp-refcache[all]"
 ```
 
+<!-- Uncomment when repository is public
 ### From Git (for development)
 
 ```bash
@@ -68,11 +73,12 @@ uv add "mcp-refcache[all]"
 uv add "mcp-refcache @ git+https://github.com/l4b4r4b4b4/mcp-refcache"
 
 # Specific version
-uv add "mcp-refcache @ git+https://github.com/l4b4r4b4b4/mcp-refcache@v0.0.1"
+uv add "mcp-refcache @ git+https://github.com/l4b4r4b4b4/mcp-refcache@v0.1.0"
 
 # Local development (editable)
 uv add --editable ../mcp-refcache
 ```
+-->
 
 ## Repository Structure
 
@@ -91,6 +97,10 @@ mcp-refcache/
 
 ### Using Examples
 
+Examples are included in the source distribution but not installed with pip.
+See the `examples/` directory in the source code for usage patterns.
+
+<!-- Uncomment when repository is public
 To use the example servers after cloning:
 
 ```bash
@@ -100,8 +110,7 @@ git clone --recurse-submodules https://github.com/l4b4r4b4b4/mcp-refcache
 # Or if already cloned:
 git submodule update --init --recursive
 ```
-
-Each example has its own README with setup instructions. Examples may be in private repositories during early development.
+-->
 
 ## Quick Start
 
@@ -271,6 +280,126 @@ def validate_identity(secrets_ref: str) -> bool:
     return verify_ssn(secrets["ssn"])     # Agent never sees it
 ```
 
+## Backends
+
+mcp-refcache supports multiple storage backends for different deployment scenarios:
+
+### Memory Backend (Default)
+
+In-memory caching for testing and simple single-process use cases:
+
+```python
+from mcp_refcache import RefCache
+from mcp_refcache.backends import MemoryBackend
+
+cache = RefCache(
+    name="my-cache",
+    backend=MemoryBackend(),  # Default if not specified
+)
+```
+
+**Use when:** Testing, simple scripts, single-process applications.
+
+### SQLite Backend
+
+Persistent caching with zero external dependencies. Enables cross-tool reference sharing between multiple MCP servers on the same machine:
+
+```python
+from mcp_refcache import RefCache
+from mcp_refcache.backends import SQLiteBackend
+
+# Default path: ~/.cache/mcp-refcache/cache.db
+cache = RefCache(
+    name="my-cache",
+    backend=SQLiteBackend(),
+)
+
+# Custom path
+cache = RefCache(
+    name="my-cache",
+    backend=SQLiteBackend("/path/to/cache.db"),
+)
+
+# Or via environment variable
+# export MCP_REFCACHE_DB_PATH=/path/to/cache.db
+```
+
+**Features:**
+- WAL mode for concurrent access
+- Thread-safe with connection-per-thread model
+- Cross-process reference sharing
+- XDG-compliant default path
+- Zero external dependencies (SQLite is in stdlib)
+
+**Use when:** Single-machine deployments, multiple MCP servers sharing cache, persistent cache across restarts.
+
+### Redis Backend
+
+Distributed caching for multi-user, multi-machine scenarios:
+
+```python
+from mcp_refcache import RefCache
+from mcp_refcache.backends import RedisBackend
+
+# Connect to Redis/Valkey
+cache = RefCache(
+    name="my-cache",
+    backend=RedisBackend(
+        host="localhost",
+        port=6379,
+        password="your-password",  # Optional
+    ),
+)
+
+# Or via URL
+cache = RefCache(
+    name="my-cache",
+    backend=RedisBackend(url="redis://:password@localhost:6379/0"),
+)
+```
+
+**Features:**
+- Valkey/Redis compatible
+- Native TTL via Redis expiration
+- Connection pooling for thread safety
+- Cross-server reference sharing
+- Horizontal scaling ready
+
+**Use when:** Multi-user deployments, distributed systems, Docker/Kubernetes environments.
+
+#### Docker Deployment Example
+
+See `examples/redis-docker/` for a complete Docker Compose setup with:
+- Valkey (Redis-compatible) server
+- Two MCP servers sharing the cache
+- Health checks and proper dependencies
+
+```bash
+# Start the stack
+cd examples/redis-docker
+docker compose up -d
+
+# Zed IDE configuration
+# Add to .zed/settings.json:
+{
+  "context_servers": {
+    "redis-calculator": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:8001/sse"]
+    },
+    "redis-data-analysis": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:8002/sse"]
+    }
+  }
+}
+```
+
+Cross-tool workflow:
+1. `redis-calculator`: `generate_primes(50)` → returns `ref_id`
+2. `redis-data-analysis`: `analyze_data(ref_id)` → resolves from shared Redis cache
+3. Both servers see the same cached data!
+
 ## API Reference
 
 ### RefCache
@@ -327,27 +456,29 @@ async def process_data(data: list[int]) -> list[float]:
 
 ## Roadmap
 
-### v0.0.1 (Current)
-- [x] Core reference-based caching
+### v0.1.0 (Current)
+- [x] Core reference-based caching with `@cache.cached()` decorator
 - [x] Memory backend (thread-safe, TTL support)
+- [x] SQLite backend (persistent, cross-tool sharing, zero dependencies)
+- [x] Redis backend (distributed, multi-user, Docker-ready)
 - [x] Preview generation (truncate, sample, paginate)
-- [x] Basic namespace support (public, session, user, custom)
+- [x] Namespace isolation (public, session, user, org, custom)
 - [x] CRUD + EXECUTE permission model
 - [x] Separate user/agent access control
 - [x] TTL per namespace
-- [x] FastMCP integration tools
+- [x] FastMCP integration with auto-resolve
 - [x] Langfuse observability (TracedRefCache)
+- [x] Docker deployment example with Valkey
 
-### v0.0.2
-- [ ] Valkey/Redis backend (cross-server shared caching)
+### v0.2.0 (Planned)
+- [ ] MCP template (cookiecutter/copier for new servers)
+- [ ] Time series backend (InfluxDB, TimescaleDB for financial data)
+- [ ] Redis Cluster/Sentinel support
+- [ ] Metrics/observability hooks (Prometheus, OpenTelemetry)
 - [ ] Reference metadata (tags, descriptions)
 - [ ] Audit logging (who accessed what, when)
-- [ ] Value transformations (redacted views)
-- [ ] Permission delegation (user grants agent temporary access)
-- [ ] Expiring permissions (time-bounded access)
-- [ ] Bulk operations (batch resolve, batch permission check)
 
-### v0.0.3
+### v0.3.0
 - [ ] Lazy evaluation (compute-on-first-access references)
 - [ ] Derived references (`ref.field.subfield` access)
 - [ ] Encryption at rest for sensitive values
@@ -365,18 +496,14 @@ async def process_data(data: list[int]) -> list[float]:
 ## Development
 
 ```bash
-# Clone the repo
-git clone https://github.com/l4b4r4b4b4/mcp-refcache
-cd mcp-refcache
-
-# Enter nix dev shell (recommended)
-nix develop
-
-# Or use uv directly
+# Install dependencies
 uv sync
 
+# Enter nix dev shell (optional, recommended)
+nix develop
+
 # Run tests
-uv run pytest
+uv run pytest --cov
 
 # Lint and format
 uv run ruff check .
@@ -431,9 +558,9 @@ This is an early alpha release. The core API is functional but may change based 
 See the [Roadmap](#roadmap) section above for planned features in upcoming releases.
 
 ### Community
+## Support
 
-- **Issues:** Report bugs or request features on [GitHub Issues](https://github.com/l4b4r4b4b4/mcp-refcache/issues)
-- **Discussions:** Ask questions or share ideas in [GitHub Discussions](https://github.com/l4b4r4b4b4/mcp-refcache/discussions)
+- **PyPI:** [pypi.org/project/mcp-refcache](https://pypi.org/project/mcp-refcache/)
 - **Contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
 
 ## License
@@ -445,14 +572,13 @@ MIT License - see [LICENSE](LICENSE) for details.
 Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ### Development Setup
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ```bash
-# Clone the repo
-git clone https://github.com/l4b4r4b4b4/mcp-refcache
-cd mcp-refcache
-
-# Enter nix dev shell (recommended) or use uv directly
-nix develop  # or: uv sync
+# Install for development
+uv sync
 
 # Run tests
 uv run pytest --cov
@@ -460,11 +586,7 @@ uv run pytest --cov
 # Lint and format
 uv run ruff check . --fix
 uv run ruff format .
-
-# Type check
-uv run mypy src/
 ```
-
 ### Code Quality Standards
 
 - **Test Coverage:** Minimum 80% (currently meeting this requirement)

@@ -1,0 +1,14 @@
+{
+  "context_servers": {
+    "calculator": {
+      "settings": {
+        "url": "http://localhost:8001/sse"
+      }
+    },
+    "data-analysis": {
+      "settings": {
+        "url": "http://localhost:8002/sse"
+      }
+    }
+  }
+}

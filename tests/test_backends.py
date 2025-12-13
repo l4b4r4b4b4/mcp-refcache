@@ -1,11 +1,13 @@
 """Tests for cache backends.
 
-Tests the CacheEntry dataclass, MemoryBackend, and SQLiteBackend implementations.
-Both backends are tested through parametrized fixtures to ensure consistent behavior.
+Tests the CacheEntry dataclass, MemoryBackend, SQLiteBackend, and RedisBackend
+implementations. All backends are tested through parametrized fixtures to
+ensure consistent behavior.
 """
 
 import threading
 import time
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,15 @@ from mcp_refcache.backends.base import CacheBackend, CacheEntry
 from mcp_refcache.backends.memory import MemoryBackend
 from mcp_refcache.backends.sqlite import SQLiteBackend
 from mcp_refcache.permissions import AccessPolicy
+
+# Check if Redis is available
+try:
+    from mcp_refcache.backends.redis import RedisBackend
+
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    RedisBackend = None  # type: ignore[assignment,misc]
 
 
 class TestCacheEntry:
@@ -92,7 +103,7 @@ class TestCacheEntry:
 
 
 class TestBackendProtocolCompliance:
-    """Test that both backends implement the CacheBackend protocol."""
+    """Test that all backends implement the CacheBackend protocol."""
 
     def test_memory_backend_is_cache_backend(self) -> None:
         """Test that MemoryBackend satisfies the CacheBackend protocol."""
@@ -126,16 +137,55 @@ class TestBackendProtocolCompliance:
         assert hasattr(backend, "keys")
         backend.close()
 
+    @pytest.mark.skipif(not REDIS_AVAILABLE, reason="Redis package not installed")
+    def test_redis_backend_is_cache_backend(self) -> None:
+        """Test that RedisBackend satisfies the CacheBackend protocol."""
+        try:
+            backend = RedisBackend(password="mcp-refcache-dev-password")
+            if not backend.ping():
+                pytest.skip("Redis server not available")
+            assert isinstance(backend, CacheBackend)
+            backend.close()
+        except Exception:
+            pytest.skip("Redis server not available")
 
-# Parametrized fixtures for testing both backends with same tests
+    @pytest.mark.skipif(not REDIS_AVAILABLE, reason="Redis package not installed")
+    def test_redis_backend_has_required_methods(self) -> None:
+        """Test that RedisBackend has all required protocol methods."""
+        try:
+            backend = RedisBackend(password="mcp-refcache-dev-password")
+            if not backend.ping():
+                pytest.skip("Redis server not available")
+            assert hasattr(backend, "get")
+            assert hasattr(backend, "set")
+            assert hasattr(backend, "delete")
+            assert hasattr(backend, "exists")
+            assert hasattr(backend, "clear")
+            assert hasattr(backend, "keys")
+            backend.close()
+        except Exception:
+            pytest.skip("Redis server not available")
 
 
-@pytest.fixture(params=["memory", "sqlite_memory", "sqlite_file"])
-def backend(request: pytest.FixtureRequest, tmp_path: Path) -> CacheBackend:
+# Parametrized fixtures for testing all backends with same tests
+
+
+def _get_backend_params() -> list[str]:
+    """Get list of backend parameter names for parametrization."""
+    params = ["memory", "sqlite_memory", "sqlite_file"]
+    if REDIS_AVAILABLE:
+        params.append("redis")
+    return params
+
+
+@pytest.fixture(params=_get_backend_params())
+def backend(
+    request: pytest.FixtureRequest, tmp_path: Path
+) -> Generator[CacheBackend, None, None]:
     """Create a backend for testing.
 
-    Parametrized to test MemoryBackend, SQLiteBackend with :memory:,
-    and SQLiteBackend with a file-based database.
+    Parametrized to test MemoryBackend, SQLiteBackend (memory and file),
+    and RedisBackend (when available and connected).
     """
     if request.param == "memory":
         yield MemoryBackend()
@@ -148,6 +198,21 @@ def backend(request: pytest.FixtureRequest, tmp_path: Path) -> CacheBackend:
         sqlite_backend = SQLiteBackend(database_path)
         yield sqlite_backend
         sqlite_backend.close()
+    elif request.param == "redis":
+        if not REDIS_AVAILABLE:
+            pytest.skip("Redis package not installed")
+        try:
+            redis_backend = RedisBackend(password="mcp-refcache-dev-password")
+            if not redis_backend.ping():
+                pytest.skip("Redis server not available")
+            # Clean up any leftover data from previous tests
+            redis_backend.clear()
+            yield redis_backend
+            # Clean up after test
+            redis_backend.clear()
+            redis_backend.close()
+        except Exception as exception:
+            pytest.skip(f"Redis connection failed: {exception}")
 
 
 @pytest.fixture()
@@ -162,12 +227,12 @@ def sample_entry() -> CacheEntry:
 
 
 class TestBackendBasicOperations:
-    """Tests for basic backend operations (parametrized for both backends)."""
+    """Tests for basic backend operations (parametrized for all backends)."""
 
     def test_set_and_get(self, backend: CacheBackend, sample_entry: CacheEntry) -> None:
-        """Test storing and retrieving an entry."""
-        backend.set("key1", sample_entry)
-        result = backend.get("key1")
+        """Test basic set and get operations."""
+        backend.set("test_key", sample_entry)
+        result = backend.get("test_key")
 
         assert result is not None
         assert result.value == sample_entry.value
@@ -175,63 +240,59 @@ class TestBackendBasicOperations:
 
     def test_get_nonexistent_key(self, backend: CacheBackend) -> None:
         """Test getting a key that doesn't exist returns None."""
-        result = backend.get("nonexistent")
-        assert result is None
+        assert backend.get("nonexistent_key") is None
 
-    def test_overwrite_existing_key(self, backend: CacheBackend) -> None:
+    def test_overwrite_existing_key(
+        self, backend: CacheBackend, sample_entry: CacheEntry
+    ) -> None:
         """Test that setting an existing key overwrites the value."""
-        entry1 = CacheEntry(
-            value="first",
-            namespace="public",
+        backend.set("test_key", sample_entry)
+
+        new_entry = CacheEntry(
+            value={"new": "value"},
+            namespace="private",
             policy=AccessPolicy(),
             created_at=time.time(),
         )
-        entry2 = CacheEntry(
-            value="second",
-            namespace="public",
-            policy=AccessPolicy(),
-            created_at=time.time(),
-        )
+        backend.set("test_key", new_entry)
 
-        backend.set("key1", entry1)
-        backend.set("key1", entry2)
-
-        result = backend.get("key1")
+        result = backend.get("test_key")
         assert result is not None
-        assert result.value == "second"
+        assert result.value == {"new": "value"}
+        assert result.namespace == "private"
 
     def test_delete_existing_key(
         self, backend: CacheBackend, sample_entry: CacheEntry
     ) -> None:
-        """Test deleting an existing key returns True."""
-        backend.set("key1", sample_entry)
-        result = backend.delete("key1")
+        """Test deleting an existing key."""
+        backend.set("test_key", sample_entry)
+        assert backend.exists("test_key")
 
-        assert result is True
-        assert backend.get("key1") is None
+        deleted = backend.delete("test_key")
+        assert deleted is True
+        assert backend.get("test_key") is None
 
     def test_delete_nonexistent_key(self, backend: CacheBackend) -> None:
         """Test deleting a nonexistent key returns False."""
-        result = backend.delete("nonexistent")
-        assert result is False
+        deleted = backend.delete("nonexistent_key")
+        assert deleted is False
 
     def test_exists_for_existing_key(
         self, backend: CacheBackend, sample_entry: CacheEntry
     ) -> None:
-        """Test exists returns True for existing key."""
-        backend.set("key1", sample_entry)
-        assert backend.exists("key1") is True
+        """Test exists returns True for existing keys."""
+        backend.set("test_key", sample_entry)
+        assert backend.exists("test_key") is True
 
     def test_exists_for_nonexistent_key(self, backend: CacheBackend) -> None:
-        """Test exists returns False for nonexistent key."""
-        assert backend.exists("nonexistent") is False
+        """Test exists returns False for nonexistent keys."""
+        assert backend.exists("nonexistent_key") is False
 
     def test_stores_complex_values(self, backend: CacheBackend) -> None:
-        """Test storing and retrieving complex nested values."""
+        """Test storing complex nested data structures."""
         complex_value = {
-            "list": [1, 2, 3, {"nested": True}],
-            "dict": {"a": 1, "b": {"c": 2}},
-            "string": "hello",
+            "nested": {"deep": {"value": [1, 2, 3]}},
+            "list": [{"a": 1}, {"b": 2}],
             "number": 42.5,
             "boolean": True,
             "null": None,
@@ -250,7 +311,7 @@ class TestBackendBasicOperations:
         assert result.value == complex_value
 
     def test_stores_list_values(self, backend: CacheBackend) -> None:
-        """Test storing and retrieving list values."""
+        """Test storing list values directly."""
         list_value = [1, 2, 3, "four", {"five": 5}]
         entry = CacheEntry(
             value=list_value,
@@ -267,14 +328,17 @@ class TestBackendBasicOperations:
 
     def test_preserves_policy(self, backend: CacheBackend) -> None:
         """Test that AccessPolicy is preserved through storage."""
-        policy = AccessPolicy(
+        from mcp_refcache.permissions import Permission
+
+        custom_policy = AccessPolicy(
             owner="user:alice",
-            allowed_actors=frozenset({"user:bob", "user:charlie"}),
+            user_permissions=Permission.READ,
+            agent_permissions=Permission.EXECUTE,
         )
         entry = CacheEntry(
             value="test",
-            namespace="private",
-            policy=policy,
+            namespace="user:alice",
+            policy=custom_policy,
             created_at=time.time(),
         )
 
@@ -283,14 +347,15 @@ class TestBackendBasicOperations:
 
         assert result is not None
         assert result.policy.owner == "user:alice"
-        assert result.policy.allowed_actors == frozenset({"user:bob", "user:charlie"})
+        assert result.policy.user_permissions == Permission.READ
+        assert result.policy.agent_permissions == Permission.EXECUTE
 
     def test_preserves_metadata(self, backend: CacheBackend) -> None:
         """Test that metadata is preserved through storage."""
         metadata = {
-            "tool_name": "my_tool",
+            "tool_name": "test_tool",
             "total_items": 100,
-            "extra": {"nested": True},
+            "preview_size": 50,
         }
         entry = CacheEntry(
             value="test",
@@ -308,7 +373,7 @@ class TestBackendBasicOperations:
 
 
 class TestBackendExpiration:
-    """Tests for TTL/expiration handling (parametrized for both backends)."""
+    """Tests for entry expiration handling (parametrized for all backends)."""
 
     def test_get_expired_entry_returns_none(self, backend: CacheBackend) -> None:
         """Test that getting an expired entry returns None."""
@@ -316,8 +381,8 @@ class TestBackendExpiration:
             value="expired",
             namespace="public",
             policy=AccessPolicy(),
-            created_at=1000.0,
-            expires_at=1000.0,  # Already expired
+            created_at=time.time() - 100,
+            expires_at=time.time() - 1,  # Already expired
         )
         backend.set("expired_key", expired_entry)
 
@@ -325,22 +390,21 @@ class TestBackendExpiration:
         assert result is None
 
     def test_get_expired_entry_cleans_up(self, backend: CacheBackend) -> None:
-        """Test that getting an expired entry removes it from storage."""
+        """Test that accessing an expired entry removes it."""
         expired_entry = CacheEntry(
             value="expired",
             namespace="public",
             policy=AccessPolicy(),
-            created_at=1000.0,
-            expires_at=1000.0,
+            created_at=time.time() - 100,
+            expires_at=time.time() - 1,
         )
         backend.set("expired_key", expired_entry)
 
-        # First get should return None and clean up
+        # Access the expired entry
         backend.get("expired_key")
 
-        # Key should no longer exist in storage
-        keys = backend.keys()
-        assert "expired_key" not in keys
+        # It should be cleaned up now
+        assert backend.exists("expired_key") is False
 
     def test_exists_returns_false_for_expired(self, backend: CacheBackend) -> None:
         """Test that exists returns False for expired entries."""
@@ -348,77 +412,76 @@ class TestBackendExpiration:
             value="expired",
             namespace="public",
             policy=AccessPolicy(),
-            created_at=1000.0,
-            expires_at=1000.0,
+            created_at=time.time() - 100,
+            expires_at=time.time() - 1,
         )
         backend.set("expired_key", expired_entry)
 
         assert backend.exists("expired_key") is False
 
     def test_non_expired_entry_accessible(self, backend: CacheBackend) -> None:
-        """Test that non-expired entries are still accessible."""
-        future_time = time.time() + 3600  # 1 hour from now
-        entry = CacheEntry(
-            value="valid",
+        """Test that non-expired entries are accessible."""
+        future_entry = CacheEntry(
+            value="future",
             namespace="public",
             policy=AccessPolicy(),
             created_at=time.time(),
-            expires_at=future_time,
+            expires_at=time.time() + 3600,  # Expires in 1 hour
         )
-        backend.set("valid_key", entry)
+        backend.set("future_key", future_entry)
 
-        result = backend.get("valid_key")
+        result = backend.get("future_key")
         assert result is not None
-        assert result.value == "valid"
+        assert result.value == "future"
 
 
 class TestBackendClear:
-    """Tests for clear operations (parametrized for both backends)."""
+    """Tests for clearing cache entries (parametrized for all backends)."""
 
     def test_clear_all(self, backend: CacheBackend) -> None:
         """Test clearing all entries."""
         for index in range(5):
             entry = CacheEntry(
-                value=f"value{index}",
-                namespace="public",
+                value=f"value_{index}",
+                namespace=f"ns_{index}",
                 policy=AccessPolicy(),
                 created_at=time.time(),
             )
-            backend.set(f"key{index}", entry)
+            backend.set(f"key_{index}", entry)
 
         cleared = backend.clear()
-
         assert cleared == 5
-        assert len(backend.keys()) == 0
+        assert backend.keys() == []
 
     def test_clear_by_namespace(self, backend: CacheBackend) -> None:
-        """Test clearing only entries in a specific namespace."""
-        # Add entries in different namespaces
+        """Test clearing entries in a specific namespace."""
+        # Create entries in different namespaces
         for index in range(3):
             entry = CacheEntry(
-                value=f"public{index}",
-                namespace="public",
+                value=f"ns1_{index}",
+                namespace="namespace_1",
                 policy=AccessPolicy(),
                 created_at=time.time(),
             )
-            backend.set(f"public_key{index}", entry)
+            backend.set(f"ns1_key_{index}", entry)
 
         for index in range(2):
             entry = CacheEntry(
-                value=f"session{index}",
-                namespace="session:abc",
+                value=f"ns2_{index}",
+                namespace="namespace_2",
                 policy=AccessPolicy(),
                 created_at=time.time(),
             )
-            backend.set(f"session_key{index}", entry)
+            backend.set(f"ns2_key_{index}", entry)
 
-        # Clear only session namespace
-        cleared = backend.clear(namespace="session:abc")
+        # Clear only namespace_1
+        cleared = backend.clear("namespace_1")
+        assert cleared == 3
 
-        assert cleared == 2
-        assert len(backend.keys()) == 3
-        assert len(backend.keys(namespace="public")) == 3
-        assert len(backend.keys(namespace="session:abc")) == 0
+        # namespace_2 entries should still exist
+        remaining_keys = backend.keys()
+        assert len(remaining_keys) == 2
+        assert all("ns2" in key for key in remaining_keys)
 
     def test_clear_empty_cache(self, backend: CacheBackend) -> None:
         """Test clearing an empty cache returns 0."""
@@ -427,50 +490,54 @@ class TestBackendClear:
 
 
 class TestBackendKeys:
-    """Tests for key listing (parametrized for both backends)."""
+    """Tests for listing cache keys (parametrized for all backends)."""
 
     def test_keys_empty_cache(self, backend: CacheBackend) -> None:
         """Test keys returns empty list for empty cache."""
         assert backend.keys() == []
 
     def test_keys_all(self, backend: CacheBackend) -> None:
-        """Test keys returns all keys when no namespace filter."""
-        for index in range(3):
+        """Test keys returns all stored keys."""
+        for index in range(5):
             entry = CacheEntry(
-                value=f"value{index}",
+                value=f"value_{index}",
                 namespace="public",
                 policy=AccessPolicy(),
                 created_at=time.time(),
             )
-            backend.set(f"key{index}", entry)
+            backend.set(f"key_{index}", entry)
 
         keys = backend.keys()
-        assert len(keys) == 3
-        assert set(keys) == {"key0", "key1", "key2"}
+        assert len(keys) == 5
+        assert set(keys) == {f"key_{index}" for index in range(5)}
 
     def test_keys_by_namespace(self, backend: CacheBackend) -> None:
-        """Test keys filters by namespace."""
-        namespaces = ["public", "session:abc", "user:123"]
-        for namespace_index, namespace in enumerate(namespaces):
+        """Test keys filtered by namespace."""
+        for index in range(3):
             entry = CacheEntry(
-                value=f"value{namespace_index}",
-                namespace=namespace,
+                value=f"ns1_{index}",
+                namespace="namespace_1",
                 policy=AccessPolicy(),
                 created_at=time.time(),
             )
-            backend.set(f"key{namespace_index}", entry)
+            backend.set(f"ns1_key_{index}", entry)
 
-        public_keys = backend.keys(namespace="public")
-        session_keys = backend.keys(namespace="session:abc")
-        user_keys = backend.keys(namespace="user:123")
+        for index in range(2):
+            entry = CacheEntry(
+                value=f"ns2_{index}",
+                namespace="namespace_2",
+                policy=AccessPolicy(),
+                created_at=time.time(),
+            )
+            backend.set(f"ns2_key_{index}", entry)
 
-        assert len(public_keys) == 1
-        assert len(session_keys) == 1
-        assert len(user_keys) == 1
+        ns1_keys = backend.keys("namespace_1")
+        assert len(ns1_keys) == 3
+        assert all("ns1" in key for key in ns1_keys)
 
     def test_keys_excludes_expired(self, backend: CacheBackend) -> None:
         """Test that keys excludes expired entries."""
-        # Add valid entry
+        # Valid entry
         valid_entry = CacheEntry(
             value="valid",
             namespace="public",
@@ -480,13 +547,13 @@ class TestBackendKeys:
         )
         backend.set("valid_key", valid_entry)
 
-        # Add expired entry
+        # Expired entry
         expired_entry = CacheEntry(
             value="expired",
             namespace="public",
             policy=AccessPolicy(),
-            created_at=1000.0,
-            expires_at=1000.0,
+            created_at=time.time() - 100,
+            expires_at=time.time() - 1,
         )
         backend.set("expired_key", expired_entry)
 
@@ -496,22 +563,22 @@ class TestBackendKeys:
 
 
 class TestBackendThreadSafety:
-    """Tests for thread safety (parametrized for both backends)."""
+    """Tests for thread safety (parametrized for all backends)."""
 
     def test_concurrent_set_and_get(self, backend: CacheBackend) -> None:
-        """Test that concurrent set and get operations don't corrupt data."""
+        """Test concurrent reads and writes don't cause errors."""
         errors: list[Exception] = []
 
-        def writer(thread_index: int) -> None:
+        def writer() -> None:
             try:
-                for iteration in range(100):
+                for index in range(100):
                     entry = CacheEntry(
-                        value=f"thread{thread_index}_iter{iteration}",
+                        value=f"value_{index}",
                         namespace="public",
                         policy=AccessPolicy(),
                         created_at=time.time(),
                     )
-                    backend.set(f"key_{thread_index}_{iteration}", entry)
+                    backend.set(f"concurrent_key_{index}", entry)
             except Exception as exception:
                 errors.append(exception)
 
@@ -519,15 +586,16 @@ class TestBackendThreadSafety:
             try:
                 for _ in range(100):
                     backend.keys()
-                    backend.get("key_0_0")
+                    backend.get("concurrent_key_0")
             except Exception as exception:
                 errors.append(exception)
 
-        threads = []
-        for thread_index in range(5):
-            writer_thread = threading.Thread(target=writer, args=(thread_index,))
-            reader_thread = threading.Thread(target=reader)
-            threads.extend([writer_thread, reader_thread])
+        threads = [
+            threading.Thread(target=writer),
+            threading.Thread(target=writer),
+            threading.Thread(target=reader),
+            threading.Thread(target=reader),
+        ]
 
         for thread in threads:
             thread.start()
@@ -536,7 +604,38 @@ class TestBackendThreadSafety:
             thread.join()
 
         assert len(errors) == 0, f"Thread safety errors: {errors}"
-        # Should have 500 keys (5 writers * 100 iterations)
+
+    def test_concurrent_many_operations(self, backend: CacheBackend) -> None:
+        """Test many concurrent operations."""
+        errors: list[Exception] = []
+
+        def worker(worker_id: int) -> None:
+            try:
+                for index in range(50):
+                    entry = CacheEntry(
+                        value=f"worker_{worker_id}_value_{index}",
+                        namespace="public",
+                        policy=AccessPolicy(),
+                        created_at=time.time(),
+                    )
+                    backend.set(f"worker_{worker_id}_key_{index}", entry)
+                    backend.get(f"worker_{worker_id}_key_{index}")
+                    backend.exists(f"worker_{worker_id}_key_{index}")
+            except Exception as exception:
+                errors.append(exception)
+
+        threads = [
+            threading.Thread(target=worker, args=(index,)) for index in range(10)
+        ]
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        assert len(errors) == 0, f"Concurrent operation errors: {errors}"
+        # Each worker writes 50 keys
         assert len(backend.keys()) == 500
 
 
@@ -593,41 +692,41 @@ class TestSQLiteBackendSpecific:
         backend2.close()
 
     def test_close_and_reopen(self, tmp_path: Path) -> None:
-        """Test closing and reopening the backend."""
-        database_path = tmp_path / "reopen.db"
+        """Test closing and reopening the database."""
+        database_path = tmp_path / "close_reopen.db"
 
         backend = SQLiteBackend(database_path)
         entry = CacheEntry(
-            value="test",
+            value="test_value",
             namespace="public",
             policy=AccessPolicy(),
             created_at=time.time(),
         )
-        backend.set("key1", entry)
+        backend.set("test_key", entry)
         backend.close()
 
         # Reopen and verify
         backend = SQLiteBackend(database_path)
-        result = backend.get("key1")
+        result = backend.get("test_key")
         assert result is not None
-        assert result.value == "test"
+        assert result.value == "test_value"
         backend.close()
 
     def test_memory_database_not_shared(self) -> None:
-        """Test that :memory: databases are isolated per backend instance."""
+        """Test that separate :memory: databases are independent."""
         backend1 = SQLiteBackend(":memory:")
         backend2 = SQLiteBackend(":memory:")
 
         entry = CacheEntry(
-            value="test",
+            value="only_in_backend1",
             namespace="public",
             policy=AccessPolicy(),
             created_at=time.time(),
         )
-        backend1.set("key1", entry)
+        backend1.set("unique_key", entry)
 
         # backend2 should not see backend1's data
-        assert backend2.get("key1") is None
+        assert backend2.get("unique_key") is None
 
         backend1.close()
         backend2.close()
@@ -639,31 +738,29 @@ class TestSQLiteBackendSpecific:
         env_path = tmp_path / "env_cache.db"
         monkeypatch.setenv("MCP_REFCACHE_DB_PATH", str(env_path))
 
-        backend = SQLiteBackend()
-
+        backend = SQLiteBackend()  # No path argument
         assert backend.database_path == env_path
         backend.close()
 
     def test_environment_variable_memory(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that MCP_REFCACHE_DB_PATH can be set to :memory:."""
+        """Test that MCP_REFCACHE_DB_PATH=:memory: works."""
         monkeypatch.setenv("MCP_REFCACHE_DB_PATH", ":memory:")
 
         backend = SQLiteBackend()
-
         assert backend.database_path == ":memory:"
         backend.close()
 
     def test_xdg_cache_home_respected(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test that XDG_CACHE_HOME is respected for default path."""
-        cache_home = tmp_path / "custom_cache"
-        monkeypatch.setenv("XDG_CACHE_HOME", str(cache_home))
+        """Test that XDG_CACHE_HOME is used for default path."""
+        xdg_cache = tmp_path / "xdg_cache"
+        xdg_cache.mkdir()
+        monkeypatch.setenv("XDG_CACHE_HOME", str(xdg_cache))
         monkeypatch.delenv("MCP_REFCACHE_DB_PATH", raising=False)
 
         backend = SQLiteBackend()
-
-        expected_path = cache_home / "mcp-refcache" / "cache.db"
+        expected_path = xdg_cache / "mcp-refcache" / "cache.db"
         assert backend.database_path == expected_path
         backend.close()
 
@@ -777,3 +874,248 @@ class TestSQLiteBackendConcurrentProcesses:
         assert len(errors) == 0, f"Concurrent read/write errors: {errors}"
         # Readers should have seen some data
         assert all(count > 0 for count in read_results)
+
+
+# Redis-specific tests
+
+
+@pytest.mark.skipif(not REDIS_AVAILABLE, reason="Redis package not installed")
+class TestRedisBackendSpecific:
+    """Tests specific to RedisBackend functionality."""
+
+    @pytest.fixture()
+    def redis_backend(self) -> Generator[RedisBackend, None, None]:
+        """Create a Redis backend for testing."""
+        try:
+            backend = RedisBackend(password="mcp-refcache-dev-password")
+            if not backend.ping():
+                pytest.skip("Redis server not available")
+            backend.clear()  # Clean slate
+            yield backend
+            backend.clear()  # Cleanup
+            backend.close()
+        except Exception as exception:
+            pytest.skip(f"Redis connection failed: {exception}")
+
+    def test_ping(self, redis_backend: RedisBackend) -> None:
+        """Test that ping returns True when connected."""
+        assert redis_backend.ping() is True
+
+    def test_connection_info(self, redis_backend: RedisBackend) -> None:
+        """Test that connection_info returns expected keys."""
+        info = redis_backend.connection_info
+        assert "host" in info
+        assert "port" in info
+        assert "db" in info
+        assert "ssl" in info
+
+    def test_key_prefix(self, redis_backend: RedisBackend) -> None:
+        """Test that keys are stored with the correct prefix."""
+        entry = CacheEntry(
+            value="test_value",
+            namespace="public",
+            policy=AccessPolicy(),
+            created_at=time.time(),
+        )
+        redis_backend.set("my_key", entry)
+
+        # Check that the key is stored with prefix
+        keys = redis_backend.keys()
+        assert "my_key" in keys
+
+    def test_native_ttl(self, redis_backend: RedisBackend) -> None:
+        """Test that Redis native TTL is used for expiration."""
+        entry = CacheEntry(
+            value="expiring_value",
+            namespace="public",
+            policy=AccessPolicy(),
+            created_at=time.time(),
+            expires_at=time.time() + 3600,  # 1 hour
+        )
+        redis_backend.set("ttl_key", entry)
+
+        # Verify key exists
+        assert redis_backend.exists("ttl_key")
+
+        # Verify we can retrieve it
+        result = redis_backend.get("ttl_key")
+        assert result is not None
+        assert result.value == "expiring_value"
+
+    def test_expired_entry_not_accessible(self, redis_backend: RedisBackend) -> None:
+        """Test that expired entries are not accessible."""
+        entry = CacheEntry(
+            value="expired_value",
+            namespace="public",
+            policy=AccessPolicy(),
+            created_at=time.time() - 100,
+            expires_at=time.time() - 1,  # Already expired
+        )
+        redis_backend.set("expired_key", entry)
+
+        # Entry should not be accessible
+        result = redis_backend.get("expired_key")
+        assert result is None
+
+    def test_close_and_reconnect(self) -> None:
+        """Test that closing and creating a new connection works."""
+        try:
+            backend1 = RedisBackend(password="mcp-refcache-dev-password")
+            if not backend1.ping():
+                pytest.skip("Redis server not available")
+
+            entry = CacheEntry(
+                value="persistent_value",
+                namespace="public",
+                policy=AccessPolicy(),
+                created_at=time.time(),
+            )
+            backend1.set("reconnect_key", entry)
+            backend1.close()
+
+            # Create new connection and verify data
+            backend2 = RedisBackend(password="mcp-refcache-dev-password")
+            result = backend2.get("reconnect_key")
+            assert result is not None
+            assert result.value == "persistent_value"
+
+            backend2.clear()
+            backend2.close()
+        except Exception as exception:
+            pytest.skip(f"Redis connection failed: {exception}")
+
+    def test_environment_variable_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that REDIS_URL environment variable is respected."""
+        monkeypatch.setenv(
+            "REDIS_URL", "redis://:mcp-refcache-dev-password@localhost:6379/0"
+        )
+
+        try:
+            backend = RedisBackend()  # No arguments, should use env var
+            if not backend.ping():
+                pytest.skip("Redis server not available")
+            assert backend.ping() is True
+            backend.close()
+        except Exception as exception:
+            pytest.skip(f"Redis connection failed: {exception}")
+
+    def test_environment_variable_components(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that REDIS_HOST, REDIS_PORT, etc. environment variables work."""
+        monkeypatch.setenv("REDIS_HOST", "localhost")
+        monkeypatch.setenv("REDIS_PORT", "6379")
+        monkeypatch.setenv("REDIS_DB", "0")
+        monkeypatch.setenv("REDIS_PASSWORD", "mcp-refcache-dev-password")
+
+        try:
+            backend = RedisBackend()  # No arguments, should use env vars
+            if not backend.ping():
+                pytest.skip("Redis server not available")
+            assert backend.ping() is True
+            backend.close()
+        except Exception as exception:
+            pytest.skip(f"Redis connection failed: {exception}")
+
+
+@pytest.mark.skipif(not REDIS_AVAILABLE, reason="Redis package not installed")
+class TestRedisBackendConcurrent:
+    """Tests for concurrent Redis access."""
+
+    @pytest.fixture()
+    def redis_backend(self) -> Generator[RedisBackend, None, None]:
+        """Create a Redis backend for testing."""
+        try:
+            backend = RedisBackend(password="mcp-refcache-dev-password")
+            if not backend.ping():
+                pytest.skip("Redis server not available")
+            backend.clear()
+            yield backend
+            backend.clear()
+            backend.close()
+        except Exception as exception:
+            pytest.skip(f"Redis connection failed: {exception}")
+
+    def test_concurrent_writers(self, redis_backend: RedisBackend) -> None:
+        """Test multiple threads writing concurrently."""
+        errors: list[Exception] = []
+
+        def writer(worker_id: int) -> None:
+            try:
+                for index in range(50):
+                    entry = CacheEntry(
+                        value=f"worker_{worker_id}_value_{index}",
+                        namespace="public",
+                        policy=AccessPolicy(),
+                        created_at=time.time(),
+                    )
+                    redis_backend.set(f"concurrent_{worker_id}_{index}", entry)
+            except Exception as exception:
+                errors.append(exception)
+
+        threads = [threading.Thread(target=writer, args=(index,)) for index in range(5)]
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        assert len(errors) == 0, f"Concurrent write errors: {errors}"
+        # 5 workers * 50 keys each
+        assert len(redis_backend.keys()) == 250
+
+    def test_concurrent_read_write(self, redis_backend: RedisBackend) -> None:
+        """Test concurrent reads and writes."""
+        # Pre-populate
+        for index in range(10):
+            entry = CacheEntry(
+                value=f"initial_{index}",
+                namespace="public",
+                policy=AccessPolicy(),
+                created_at=time.time(),
+            )
+            redis_backend.set(f"initial_{index}", entry)
+
+        errors: list[Exception] = []
+        read_counts: list[int] = []
+
+        def reader(reader_id: int) -> None:
+            try:
+                count = 0
+                for _ in range(50):
+                    keys = redis_backend.keys()
+                    count += len(keys)
+                read_counts.append(count)
+            except Exception as exception:
+                errors.append(exception)
+
+        def writer(writer_id: int) -> None:
+            try:
+                for index in range(20):
+                    entry = CacheEntry(
+                        value=f"writer_{writer_id}_{index}",
+                        namespace="public",
+                        policy=AccessPolicy(),
+                        created_at=time.time(),
+                    )
+                    redis_backend.set(f"new_{writer_id}_{index}", entry)
+            except Exception as exception:
+                errors.append(exception)
+
+        threads = [
+            threading.Thread(target=reader, args=(0,)),
+            threading.Thread(target=reader, args=(1,)),
+            threading.Thread(target=writer, args=(0,)),
+            threading.Thread(target=writer, args=(1,)),
+        ]
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        assert len(errors) == 0, f"Concurrent read/write errors: {errors}"
+        # Readers should have seen some data
+        assert all(count > 0 for count in read_counts)

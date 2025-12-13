@@ -1115,7 +1115,7 @@ wheels = [
 
 [[package]]
 name = "mcp-refcache"
-version = "0.0.1"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
@@ -1124,6 +1124,7 @@ dependencies = [
 [package.optional-dependencies]
 all = [
     { name = "fastmcp" },
+    { name = "langfuse" },
     { name = "redis" },
     { name = "tiktoken" },
     { name = "transformers" },
@@ -1135,6 +1136,11 @@ mcp = [
     { name = "fastmcp" },
 ]
 redis = [
+    { name = "redis" },
+]
+server = [
+    { name = "fastmcp" },
+    { name = "langfuse" },
     { name = "redis" },
 ]
 tiktoken = [
@@ -1162,14 +1168,17 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=2.0.0" },
+    { name = "fastmcp", marker = "extra == 'server'", specifier = ">=2.0.0" },
     { name = "langfuse", marker = "extra == 'langfuse'", specifier = ">=3.10.5" },
-    { name = "mcp-refcache", extras = ["redis", "mcp", "tiktoken", "transformers"], marker = "extra == 'all'" },
+    { name = "langfuse", marker = "extra == 'server'", specifier = ">=3.10.5" },
+    { name = "mcp-refcache", extras = ["redis", "mcp", "tiktoken", "transformers", "langfuse"], marker = "extra == 'all'" },
     { name = "pydantic", specifier = ">=2.0.0" },
-    { name = "redis", marker = "extra == 'redis'", specifier = ">=5.0.0" },
+    { name = "redis", marker = "extra == 'redis'", specifier = ">=7.0.0" },
+    { name = "redis", marker = "extra == 'server'", specifier = ">=7.0.0" },
     { name = "tiktoken", marker = "extra == 'tiktoken'", specifier = ">=0.5.0" },
     { name = "transformers", marker = "extra == 'transformers'", specifier = ">=4.30.0" },
 ]
-provides-extras = ["redis", "mcp", "all", "tiktoken", "transformers", "langfuse"]
+provides-extras = ["redis", "mcp", "server", "all", "tiktoken", "transformers", "langfuse"]
 
 [package.metadata.requires-dev]
 dev = [

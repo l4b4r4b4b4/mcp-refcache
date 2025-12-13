@@ -1,6 +1,6 @@
 [project]
 name = "mcp-refcache"
-version = "0.0.1"
+version = "0.1.0"
 description = "Reference-based caching for FastMCP servers with namespace isolation, access control, and private computation support"
 readme = "README.md"
 authors = [
@@ -38,13 +38,18 @@ dependencies = [
 
 [project.optional-dependencies]
 redis = [
-    "redis>=5.0.0",
+    "redis>=7.0.0",
 ]
 mcp = [
     "fastmcp>=2.0.0",
 ]
+server = [
+    "redis>=7.0.0",
+    "fastmcp>=2.0.0",
+    "langfuse>=3.10.5",
+]
 all = [
-    "mcp-refcache[redis,mcp,tiktoken,transformers]",
+    "mcp-refcache[redis,mcp,tiktoken,transformers,langfuse]",
 ]
 tiktoken = [
     "tiktoken>=0.5.0",
@@ -56,12 +61,13 @@ langfuse = [
     "langfuse>=3.10.5",
 ]
 
-[project.urls]
-Homepage = "https://github.com/l4b4r4b4b4/mcp-refcache"
-Repository = "https://github.com/l4b4r4b4b4/mcp-refcache"
-Documentation = "https://github.com/l4b4r4b4b4/mcp-refcache#readme"
-Issues = "https://github.com/l4b4r4b4b4/mcp-refcache/issues"
-Changelog = "https://github.com/l4b4r4b4b4/mcp-refcache/blob/main/CHANGELOG.md"
+# Uncomment when repository is public
+# [project.urls]
+# Homepage = "https://github.com/l4b4r4b4b4/mcp-refcache"
+# Repository = "https://github.com/l4b4r4b4b4/mcp-refcache"
+# Documentation = "https://github.com/l4b4r4b4b4/mcp-refcache#readme"
+# Issues = "https://github.com/l4b4r4b4b4/mcp-refcache/issues"
+# Changelog = "https://github.com/l4b4r4b4b4/mcp-refcache/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [

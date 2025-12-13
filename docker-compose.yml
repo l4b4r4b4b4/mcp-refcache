@@ -1,0 +1,117 @@
+# Docker Compose for mcp-refcache development and e2e testing
+#
+# Start all services (Valkey + MCP servers):
+#   docker compose up -d
+#
+# Start only Valkey (for local development):
+#   docker compose up -d valkey
+#
+# View logs:
+#   docker compose logs -f
+#
+# Stop and cleanup:
+#   docker compose down -v
+#
+# Rebuild after code changes:
+#   docker compose build --no-cache
+#   docker compose up -d
+
+services:
+  # ==========================================================================
+  # Valkey (Redis-compatible) - Shared cache backend
+  # ==========================================================================
+  valkey:
+    image: valkey/valkey:9.0.1-alpine
+    container_name: mcp-refcache-valkey
+    ports:
+      - "6379:6379"
+    command: valkey-server --requirepass mcp-refcache-dev-password
+    volumes:
+      - valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "-a", "mcp-refcache-dev-password", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - mcp-network
+
+  # ==========================================================================
+  # Calculator MCP Server - Generates mathematical sequences
+  # ==========================================================================
+  calculator:
+    build:
+      context: .
+      dockerfile: examples/redis-docker/Dockerfile
+    container_name: mcp-refcache-calculator
+    ports:
+      - "8001:8001"
+    environment:
+      - REDIS_HOST=valkey
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=mcp-refcache-dev-password
+      - REDIS_DB=0
+      - MCP_PORT=8001
+    command: ["servers/calculator_server.py"]
+    depends_on:
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8001/sse')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - mcp-network
+
+  # ==========================================================================
+  # Data Analysis MCP Server - Analyzes data from calculator or other sources
+  # ==========================================================================
+  data-analysis:
+    build:
+      context: .
+      dockerfile: examples/redis-docker/Dockerfile
+    container_name: mcp-refcache-data-analysis
+    ports:
+      - "8002:8002"
+    environment:
+      - REDIS_HOST=valkey
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=mcp-refcache-dev-password
+      - REDIS_DB=0
+      - MCP_PORT=8002
+    command: ["servers/data_analysis_server.py"]
+    depends_on:
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8002/sse')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - mcp-network
+
+volumes:
+  valkey-data:
+
+networks:
+  mcp-network:
+    driver: bridge
