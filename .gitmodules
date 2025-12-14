@@ -1,6 +1,3 @@
-[submodule ".external/fastmcp"]
-	path = .external/fastmcp
-	url = https://github.com/jlowin/fastmcp.git
 [submodule "examples/finquant-mcp"]
 	path = examples/finquant-mcp
 	url = https://github.com/l4b4r4b4b4/finquant-mcp
