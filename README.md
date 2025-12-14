@@ -7,12 +7,6 @@
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://pypi.org/project/mcp-refcache/)
 [![PyPI](https://img.shields.io/pypi/v/mcp-refcache.svg)](https://pypi.org/project/mcp-refcache/)
 
-## Showcase
-
-https://github.com/user-attachments/assets/f084212b-ede3-40aa-b306-833ebffe3bf8
-
-*Cross-server caching demo: Generate 1000 primes → paginate → pass ref_id to another server for analysis → transform and analyze the result. All without flooding the agent's context.*
-
 ## Overview
 
 `mcp-refcache` is a caching library designed for [FastMCP](https://github.com/jlowin/fastmcp) servers that solves critical challenges when building AI agent systems:
@@ -51,6 +45,12 @@ The agent can then:
 - **Pass the reference** to another tool (server resolves it automatically)
 - **Control preview size** at server, tool, or per-call level
 - **Use without seeing** - Execute permission enables blind computation
+
+## Showcase
+
+https://github.com/user-attachments/assets/f084212b-ede3-40aa-b306-833ebffe3bf8
+
+*Cross-server caching demo: Generate 1000 primes → paginate → pass ref_id to another server for analysis → transform and analyze the result. All without flooding the agent's context.*
 
 ## Installation
 
