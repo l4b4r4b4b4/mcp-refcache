@@ -9,7 +9,7 @@
 
 ## Showcase
 
-https://github.com/l4b4r4b4b4/mcp-refcache/raw/main/docs/showcase.mp4
+https://github.com/user-attachments/assets/f084212b-ede3-40aa-b306-833ebffe3bf8
 
 *Cross-server caching demo: Generate 1000 primes → paginate → pass ref_id to another server for analysis → transform and analyze the result. All without flooding the agent's context.*
 
