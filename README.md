@@ -17,6 +17,10 @@
 4. **Access Control** - Fine-grained permissions for both users and agents (CRUD + Execute)
 5. **Cross-Tool Data Flow** - References act as a "data bus" between tools without exposing values
 
+**Backends:** Memory (default), SQLite (persistent, cross-process), Redis (distributed, multi-server)
+
+**Token Counting:** Built-in support for tiktoken (OpenAI models) and HuggingFace tokenizers for accurate preview sizing
+
 ## The Problem
 
 When an AI agent calls a tool that returns a large dataset (e.g., 500KB JSON), the entire response goes into the agent's context window, causing:
