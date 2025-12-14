@@ -167,7 +167,7 @@ cache = RefCache(
     backend=sqlite_backend,
     default_ttl=3600,  # 1 hour TTL
     preview_config=PreviewConfig(
-        max_size=64,
+        max_size=2048,
         default_strategy=PreviewStrategy.SAMPLE,
     ),
 )

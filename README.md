@@ -545,19 +545,18 @@ Use both together:
 
 ## Project Status
 
-### Current Version: 0.0.1 (Alpha)
+### Current Version: 0.1.0
 
-This is an early alpha release. The core API is functional but may change based on feedback. We're working toward a stable 1.0.0 release.
+The core API is stable and ready for use. We're working toward a 1.0.0 release with additional features.
 
-**Stability:** Core caching and access control features are stable. Preview strategies and FastMCP integration may see refinements.
+**Stability:** Core caching and access control features are stable. Preview strategies and FastMCP integration are production-ready.
 
-**Production Use:** Suitable for experimentation and testing. For production use, pin to a specific version and review changes carefully when upgrading.
+**Production Use:** Suitable for production use. Pin to a specific version and review changes carefully when upgrading.
 
 ### Roadmap
 
 See the [Roadmap](#roadmap) section above for planned features in upcoming releases.
 
-### Community
 ## Support
 
 - **PyPI:** [pypi.org/project/mcp-refcache](https://pypi.org/project/mcp-refcache/)
@@ -570,9 +569,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Contributing
 
 Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Development Setup
-## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
