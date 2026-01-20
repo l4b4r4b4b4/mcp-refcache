@@ -392,13 +392,110 @@ From `src/mcp_refcache/models.py`:
 
 ## Next Steps
 
-1. **Task-10**: Update README with async timeout documentation
-   - Add "Async Timeout for Long-Running Operations" section
-   - Add polling workflow example
-   - Document response formats (minimal/standard/full)
-2. **Task-06**: Add progress callback protocol (optional enhancement)
-3. **Task-07**: Implement retry mechanism (optional enhancement)
-4. **Task-08**: Add cancellation API (optional enhancement)
+1. **Create minimal MCP example** in `examples/async_timeout_server.py`
+   - Simple FastMCP server with async_timeout-enabled tool
+   - Long-running function that demonstrates timeout → polling → result
+2. **Add to `.zed/settings.json`** and test in Zed
+3. **If working**: Try Hatchet backend implementation
+4. **Release new version** (v0.2.0)
+5. **Integrate into `document-mcp`** example project
+
+## Session Summary (2025-01-20)
+
+### What Was Accomplished
+- Implemented Task-05: Polling support in `RefCache.get()`
+- Implemented Task-09: Comprehensive async task tests (21 tests)
+- Fixed pre-commit issues (moved presentations to .agent/, fixed pytest.raises, bandit nosec)
+- Committed: `73d6ed0` - "feat(async): implement async timeout with polling support"
+
+### Current State
+- **718 tests passing**, all linting clean
+- Async timeout feature is complete and tested
+- Ready for real-world testing in MCP server
+
+### Key Implementation Details
+
+**Usage Pattern:**
+```python
+from mcp_refcache import RefCache
+from mcp_refcache.backends import MemoryTaskBackend
+
+cache = RefCache(
+    name="my-server",
+    task_backend=MemoryTaskBackend(max_workers=4)
+)
+
+@cache.cached(async_timeout=5.0, async_response_format="standard")
+async def long_running_tool(input: str) -> dict:
+    # If this takes >5s, returns immediately with:
+    # {"status": "processing", "ref_id": "...", "is_async": True}
+    await asyncio.sleep(30)
+    return {"result": "done"}
+```
+
+**Polling Pattern:**
+```python
+result = await long_running_tool("data")
+if result.get("status") == "processing":
+    ref_id = result["ref_id"]
+    # Poll with cache.get() until complete
+    while True:
+        response = cache.get(ref_id)
+        if isinstance(response, CacheResponse):
+            print(f"Result: {response.preview}")
+            break
+        await asyncio.sleep(1)
+```
+
+### Files to Review for Next Session
+- `src/mcp_refcache/backends/task_base.py` - TaskBackend protocol
+- `src/mcp_refcache/backends/task_memory.py` - MemoryTaskBackend
+- `src/mcp_refcache/cache.py` - async_timeout logic (L1020+), get() polling (L325+)
+- `tests/test_async_timeout.py` - 21 tests covering all scenarios
+- `examples/async_timeout/test_polling.py` - Manual test example
+
+---
+
+## Handoff Prompt for Next Session
+
+```
+Continue mcp-refcache: Goal 04 - Test Async Timeout in Real MCP Server
+
+## Context
+- Goal 04 (Async-Timeout-Fallback): Tasks 01-05, 09 complete
+- 718 tests passing, all linting clean
+- See `.agent/goals/04-Async-Timeout-Fallback/scratchpad.md` for full context
+
+## What Was Done
+- TaskBackend protocol + MemoryTaskBackend implemented
+- async_timeout + async_response_format in @cache.cached()
+- RefCache.get() returns AsyncTaskResponse for in-flight tasks
+- Comprehensive test suite (21 tests)
+- Commit: 73d6ed0
+
+## Next Steps
+1. Create `examples/async_timeout_server.py` - minimal FastMCP server with async_timeout tool
+2. Add to `.zed/settings.json` context_servers
+3. Restart Zed and test the MCP tool in this chat
+4. If working, consider Hatchet backend (optional)
+5. Release v0.2.0
+6. Integrate into document-mcp
+
+## Key Usage
+```python
+cache = RefCache(task_backend=MemoryTaskBackend())
+
+@cache.cached(async_timeout=5.0)
+async def slow_tool():
+    await asyncio.sleep(30)
+    return {"done": True}
+```
+
+## Guidelines
+- Follow `.rules` (test first, document as you go)
+- Run `uv run ruff check . --fix && uv run ruff format .` before committing
+- Run `uv run pytest` to verify tests pass
+```
 
 ## References
 

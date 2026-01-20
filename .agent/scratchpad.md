@@ -2,7 +2,7 @@
 
 ## Current Status: v0.2.0 In Development 🟡
 
-**Last Updated**: January 2025
+**Last Updated**: 2025-01-20
 
 ### Published Package
 
@@ -36,7 +36,7 @@
 |----|-----------|--------|----------|
 | 01 | [Legal-MCP](./goals/01-Legal-MCP/scratchpad.md) | ⚪ Not Started | P2 (Medium) |
 | 02 | [Faster-MCP](./goals/02-Faster-MCP/scratchpad.md) | ⚪ Not Started | P3 (Low) |
-| 04 | [Async-Task-Backends](./goals/04-Async-Timeout-Fallback/scratchpad.md) | 🟡 In Progress | P1 (High) |
+| 04 | [Async-Task-Backends](./goals/04-Async-Timeout-Fallback/scratchpad.md) | 🟢 Tasks 01-05, 09 Done | P1 (High) |
 | 05 | [Real-Estate-Sustainability-MCP](./goals/05-Real-Estate-Sustainability-MCP/scratchpad.md) | 🔴 Not Started | P1 (High) |
 
 See [Goals Index](./goals/scratchpad.md) for full tracking.
@@ -47,7 +47,86 @@ See [Goals Index](./goals/scratchpad.md) for full tracking.
 
 **02-Faster-MCP**: Research feasibility of Robyn-based (Rust runtime) alternative to FastMCP. Motivated by 40x+ performance improvement potential (10k+ RPS vs ~246 RPS).
 
-**04-Async-Task-Backends**: Add async task execution to `@cache.cached()` with pluggable backends. `TaskBackend` protocol enables `MemoryTaskBackend` (ThreadPoolExecutor, MVP) and future `HatchetTaskBackend` (distributed). When computations exceed `async_timeout`, returns reference immediately with "processing" status. Client polls for completion. Includes progress callbacks, retry mechanism, cancellation API. **Main feature for v0.2.0.** Hatchet SDK researched (2026-01-19).
+**04-Async-Task-Backends**: Add async task execution to `@cache.cached()` with pluggable backends. `TaskBackend` protocol enables `MemoryTaskBackend` (ThreadPoolExecutor, MVP) and future `HatchetTaskBackend` (distributed). When computations exceed `async_timeout`, returns reference immediately with "processing" status. Client polls for completion. **Tasks 01-05, 09 complete. 718 tests passing.** Next: Create minimal MCP server example, test in Zed, then release v0.2.0.
+
+---
+
+## Session Log (2025-01-20)
+
+### Completed This Session
+1. **Task-05**: Polling support in `RefCache.get()`
+   - Updated `get()` to return `AsyncTaskResponse` for in-flight tasks
+   - Added `_build_async_task_response()` and `_calculate_eta()` helpers
+   - Cleans up `_active_tasks` after completion
+
+2. **Task-09**: Comprehensive async task tests
+   - Created `tests/test_async_timeout.py` with 21 tests
+   - Test coverage: timeout behavior, polling, ETA, cleanup, errors, formats, concurrency
+
+3. **Pre-commit fixes**
+   - Moved `presentations/` to `.agent/presentations/` (excluded from ruff)
+   - Fixed PT011: Added match param to pytest.raises
+   - Fixed B105: Added nosec for bandit false positive
+
+4. **Commit**: `73d6ed0` - "feat(async): implement async timeout with polling support"
+
+### Test Results
+- **718 tests passing** (697 + 21 new async tests)
+- 39 skipped (Redis/transformers optional deps)
+
+---
+
+## Next Session Handoff
+
+```
+Continue mcp-refcache: Goal 04 - Test Async Timeout in Real MCP Server
+
+## Context
+- Goal 04: Tasks 01-05, 09 complete, 718 tests passing
+- See `.agent/goals/04-Async-Timeout-Fallback/scratchpad.md` for details
+
+## What Was Done
+- TaskBackend protocol + MemoryTaskBackend (ThreadPoolExecutor)
+- async_timeout + async_response_format in @cache.cached()
+- RefCache.get() returns AsyncTaskResponse for in-flight tasks
+- 21 new tests in tests/test_async_timeout.py
+- Commit: 73d6ed0
+
+## Next Steps
+1. Create `examples/async_timeout_server.py` - minimal FastMCP MCP server
+2. Add to `.zed/settings.json` context_servers section
+3. Restart Zed and test the async timeout tool in chat
+4. If working: Consider Hatchet backend (Task-11)
+5. Release v0.2.0
+6. Integrate into document-mcp
+
+## Key Files
+- Protocol: src/mcp_refcache/backends/task_base.py
+- Backend: src/mcp_refcache/backends/task_memory.py
+- Cache: src/mcp_refcache/cache.py (L325+ get(), L1020+ async_timeout)
+- Tests: tests/test_async_timeout.py
+- Manual test: examples/async_timeout/test_polling.py
+
+## Example Usage
+```python
+from mcp_refcache import RefCache
+from mcp_refcache.backends import MemoryTaskBackend
+
+cache = RefCache(task_backend=MemoryTaskBackend())
+
+@cache.cached(async_timeout=5.0)
+async def slow_tool():
+    await asyncio.sleep(30)
+    return {"done": True}
+# Returns {"status": "processing", "ref_id": "..."} after 5s
+# Client polls cache.get(ref_id) until CacheResponse returned
+```
+
+## Guidelines
+- Follow `.rules` (test, lint before commit)
+- Run: uv run ruff check . --fix && uv run ruff format .
+- Run: uv run pytest
+```
 
 **05-Real-Estate-Sustainability-MCP**: Build comprehensive Real Estate Sustainability Analysis MCP server using fastmcp-template and mcp-refcache. Four core toolsets: Excel processing, PDF analysis with Chroma semantic search, sustainability frameworks (ESG, LEED, BREEAM, DGNB), and IFC integration via ifc-mcp. Target users: developers, consultants, facility managers.
 
