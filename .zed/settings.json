@@ -10,7 +10,9 @@
       "settings": {
         "python.pythonPath": ".venv/bin/python",
         "python.analysis": {
-          "extraPaths": ["src"],
+          "extraPaths": [
+            "src"
+          ],
           "diagnosticMode": "workspace",
           "typeCheckingMode": "strict"
         }
@@ -22,44 +24,81 @@
       "format_on_save": {
         "external": {
           "command": "ruff",
-          "arguments": ["format", "-"]
+          "arguments": [
+            "format",
+            "-"
+          ]
         }
       },
-      "language_servers": ["pyright"]
+      "language_servers": [
+        "pyright"
+      ]
     }
   },
   "context_servers": {
     "nixos": {
       "command": "uvx",
-      "args": ["mcp-nixos"]
+      "args": [
+        "mcp-nixos"
+      ]
     },
     "pypi": {
       "command": "uvx",
-      "args": ["pypi-query-mcp-server"]
+      "args": [
+        "pypi-query-mcp-server"
+      ]
     },
     "context7": {
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ]
     },
     "langfuse-docs": {
       "command": "npx",
-      "args": ["mcp-remote", "https://langfuse.com/api/mcp"]
+      "args": [
+        "mcp-remote",
+        "https://langfuse.com/api/mcp"
+      ]
     },
     "calculator": {
       "command": "uv",
-      "args": ["run", "python", "examples/mcp_server.py"]
+      "args": [
+        "run",
+        "python",
+        "examples/mcp_server.py"
+      ]
+    },
+    "async-timeout": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "examples/async_timeout_server.py"
+      ]
     },
     "redis-calculator": {
       "command": "npx",
-      "args": ["mcp-remote", "http://localhost:8001/sse"]
+      "args": [
+        "mcp-remote",
+        "http://localhost:8001/sse"
+      ]
     },
     "redis-data-analysis": {
       "command": "npx",
-      "args": ["mcp-remote", "http://localhost:8002/sse"]
+      "args": [
+        "mcp-remote",
+        "http://localhost:8002/sse"
+      ]
     },
     "langfuse-calculator": {
       "command": "uv",
-      "args": ["run", "python", "examples/langfuse_integration.py"],
+      "args": [
+        "run",
+        "python",
+        "examples/langfuse_integration.py"
+      ],
       "env": {
         "LANGFUSE_PUBLIC_KEY": "",
         "LANGFUSE_SECRET_KEY": "",

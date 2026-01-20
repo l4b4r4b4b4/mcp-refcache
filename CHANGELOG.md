@@ -12,6 +12,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Time series backend for financial data use cases (InfluxDB, TimescaleDB)
 - Redis Cluster/Sentinel support for high availability
 - Metrics/observability hooks (Prometheus, OpenTelemetry)
+- Hatchet backend for distributed task execution
+
+## [0.2.0] - 2025-01-20
+
+### Added
+
+#### Async Timeout & Polling
+- **`async_timeout` parameter** - Tools return immediately with processing status if execution exceeds timeout
+- **`TaskBackend` protocol** - Pluggable backend for async task execution
+- **`MemoryTaskBackend`** - In-memory task backend using ThreadPoolExecutor
+- **`AsyncTaskResponse` model** - Structured response for in-flight async tasks
+- **`TaskProgress` model** - Progress tracking with current/total/percentage/message
+- **`TaskStatus` enum** - Lifecycle states (pending, processing, complete, failed, cancelled)
+- **`async_response_format` parameter** - Control response verbosity (minimal/standard/full)
+- **Polling via `cache.get()`** - Returns `AsyncTaskResponse` for in-flight tasks, `CacheResponse` when complete
+- **ETA calculation** - Estimated time remaining based on reported progress
+
+#### Examples
+- `examples/async_timeout_server.py` - Minimal FastMCP server demonstrating async timeout and polling
+- `examples/async_timeout/test_polling.py` - Manual test script for async polling workflow
+
+#### Testing
+- 21 new tests in `tests/test_async_timeout.py` covering:
+  - Timeout behavior (async/sync functions)
+  - Polling workflow (processing → complete)
+  - ETA calculation from progress
+  - Task cleanup after completion
+  - Error handling for failed tasks
+  - Response format levels
+  - Concurrent access patterns
+
+### Changed
+- `RefCache.__init__` now accepts optional `task_backend` parameter
+- `@cache.cached()` decorator now accepts `async_timeout` and `async_response_format` parameters
+- `RefCache.get()` now returns `AsyncTaskResponse | CacheResponse | None` (was `CacheResponse | None`)
 
 ## [0.1.0] - 2025-01-XX
 

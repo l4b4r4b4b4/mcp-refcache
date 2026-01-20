@@ -96,7 +96,7 @@ try:
 except ImportError:
     _REDIS_AVAILABLE = False
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "DEFAULT_FALLBACKS",

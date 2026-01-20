@@ -1,6 +1,6 @@
 [project]
 name = "mcp-refcache"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reference-based caching for FastMCP servers with namespace isolation, access control, and private computation support"
 readme = "README.md"
 authors = [
