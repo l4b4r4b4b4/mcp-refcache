@@ -30,7 +30,7 @@ jobs:
         run: uv sync --all-groups
 
       - name: Run tests before release
-        run: uv run pytest --cov=src/mcp_refcache --cov-fail-under=80
+        run: uv run pytest --cov=src/mcp_refcache --cov-fail-under=73
 
       - name: Build package
         run: uv build

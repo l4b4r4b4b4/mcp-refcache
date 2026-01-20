@@ -126,9 +126,7 @@ exclude = [
 compile-bytecode = true
 
 [tool.uv.workspace]
-members = [
-    "examples/fastmcp-template",
-]
+members = []
 
 # Ruff configuration
 [tool.ruff]
