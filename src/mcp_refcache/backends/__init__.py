@@ -1,19 +1,25 @@
-"""Cache backend implementations.
+"""Cache and task backend implementations.
 
-This module provides the backend protocol and implementations for
-storing cached values. The default backend is MemoryBackend.
+This module provides the backend protocols and implementations for
+storing cached values and executing async tasks.
 
-Exports:
-    CacheBackend: Protocol defining the backend interface.
+Cache Backends:
+    CacheBackend: Protocol defining the cache storage interface.
     CacheEntry: Dataclass for internal storage format.
-    MemoryBackend: Thread-safe in-memory backend implementation.
-    SQLiteBackend: Persistent SQLite-based backend implementation.
-    RedisBackend: Distributed Redis-based backend (requires redis package).
+    MemoryBackend: Thread-safe in-memory cache implementation.
+    SQLiteBackend: Persistent SQLite-based cache implementation.
+    RedisBackend: Distributed Redis-based cache (requires redis package).
+
+Task Backends:
+    TaskBackend: Protocol defining the async task execution interface.
+    MemoryTaskBackend: In-memory task execution using ThreadPoolExecutor.
 """
 
 from mcp_refcache.backends.base import CacheBackend, CacheEntry
 from mcp_refcache.backends.memory import MemoryBackend
 from mcp_refcache.backends.sqlite import SQLiteBackend
+from mcp_refcache.backends.task_base import ProgressCallback, TaskBackend
+from mcp_refcache.backends.task_memory import MemoryTaskBackend
 
 # RedisBackend is optional - only available if redis package is installed
 try:
@@ -27,7 +33,10 @@ __all__ = [
     "CacheBackend",
     "CacheEntry",
     "MemoryBackend",
+    "MemoryTaskBackend",
+    "ProgressCallback",
     "SQLiteBackend",
+    "TaskBackend",
 ]
 
 if _REDIS_AVAILABLE:

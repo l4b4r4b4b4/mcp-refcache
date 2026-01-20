@@ -3,12 +3,17 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # Pinned nixpkgs for packages broken in unstable
+    nixpkgs-pinned = {
+      url = "github:NixOS/nixpkgs/418468ac9527e799809c900eda37cbff999199b6";
+    };
     flake-utils.url = "github:numtide/flake-utils";
   };
 
   outputs = {
     self,
     nixpkgs,
+    nixpkgs-pinned,
     flake-utils,
   }:
     flake-utils.lib.eachDefaultSystem (
@@ -16,6 +21,10 @@
         pkgs = import nixpkgs {
           inherit system;
           config.allowUnfree = true;
+        };
+        # Pinned packages for those broken in unstable
+        pkgs-pinned = import nixpkgs-pinned {
+          inherit system;
         };
 
         fhsEnv = pkgs.buildFHSEnv {
@@ -27,10 +36,10 @@
               python312
               uv
               just
-
+              cookiecutter
               # OpenAPI Tools
               openapi-generator-cli
-              swagger-cli
+              pkgs-pinned.swagger-cli # pinned: broken in nixpkgs unstable (2026-01-05)
               yq
 
               # System libraries (required for some dependencies)

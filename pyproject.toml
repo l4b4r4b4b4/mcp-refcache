@@ -82,6 +82,7 @@ dev = [
     "tiktoken>=0.12.0",
     "langfuse>=3.10.5",
     "pip-audit>=2.10.0",
+    "python-pptx>=1.0.2",
 ]
 
 [build-system]
@@ -123,6 +124,11 @@ exclude = [
 [tool.uv]
 # Prefer binary packages for faster installs
 compile-bytecode = true
+
+[tool.uv.workspace]
+members = [
+    "examples/fastmcp-template",
+]
 
 # Ruff configuration
 [tool.ruff]

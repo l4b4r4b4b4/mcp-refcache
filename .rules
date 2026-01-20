@@ -474,6 +474,66 @@ Continue mcp-refcache: Feature X Implementation
 
 ---
 
+## Goals & Tasks Structure
+
+The `.agent/` directory contains a structured system for tracking goals and tasks when working with AI assistants.
+
+### Directory Structure
+
+```
+.agent/
+├── scratchpad.md           # High-level index of all goals
+└── goals/
+    ├── scratchpad.md       # Goals index & tracking
+    ├── 00-Template-Goal/   # Template for new goals
+    │   ├── scratchpad.md   # Goal overview, status, approach
+    │   └── Task-00/        # Template task
+    │       └── scratchpad.md
+    └── 01-Goal-Name/       # Actual goals numbered 01-10
+        ├── scratchpad.md   # Goal details & task list
+        ├── Task-01/
+        │   └── scratchpad.md
+        └── Task-02/
+            └── scratchpad.md
+```
+
+### Hard Rules: Working with Goals
+
+- **MUST create goals for multi-session work**: Any work spanning multiple sessions requires a goal
+- **MUST use the template**: Copy `00-Template-Goal/` when creating new goals
+- **MUST update indexes**: Update both `.agent/goals/scratchpad.md` and `.agent/scratchpad.md` when creating goals
+- **MUST document decisions**: Log decisions with rationale in goal scratchpads
+- **MUST use status indicators consistently**:
+  - 🟢 Complete — Goal/task achieved and verified
+  - 🟡 In Progress — Actively being worked on
+  - 🔴 Blocked — Waiting on dependency or decision
+  - ⚪ Not Started — Planned but not yet begun
+  - ⚫ Archived — Abandoned or superseded
+
+### Soft Rules: Goal Management
+
+- Keep scratchpads up to date with session logs
+- Link related tasks and external references
+- Use acceptance criteria as a checklist
+- Break large goals into discrete tasks (Task-01, Task-02, etc.)
+- Archive goals that are abandoned rather than deleting them
+
+### Creating a New Goal
+
+1. Copy `00-Template-Goal/` to a new directory (e.g., `02-My-New-Goal/`)
+2. Fill in the goal scratchpad with overview, criteria, and approach
+3. Update `.agent/goals/scratchpad.md` index table
+4. Update `.agent/scratchpad.md` with goal reference
+5. Create initial tasks by copying `Task-00/`
+
+### Creating Tasks within a Goal
+
+1. Copy `Task-00/` to a new task directory (e.g., `Task-01/`)
+2. Fill in the task scratchpad with objective, steps, and acceptance criteria
+3. Update the parent goal's task table
+
+---
+
 ## Usage of Coding Assistants (General Guidelines)
 
 ### Hard Rules

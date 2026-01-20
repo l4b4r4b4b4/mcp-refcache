@@ -1,0 +1,33 @@
+🚀 Just open-sourced mcp-refcache - a reference-based caching library for AI agent tool systems.
+
+After hitting the same problem across multiple projects integrating AI agents with MCP tools, I needed a general solution. Every time an agent called a tool returning large data, the entire response flooded the context window - expensive, distracting, and a security risk.
+
+The solution: Return references + previews instead. Agents can paginate through data, pass refs between tools, and even use data without seeing it (private computation).
+
+Key features:
+
+📦 Large results → ref_id + preview (not 10,000 items flooding context)
+📄 Pagination for navigating big datasets
+🔗 Cross-tool data flow via shared cache
+🔒 Private computation - agents orchestrate without accessing sensitive values
+📊 Smart token counting with tiktoken (OpenAI) and HuggingFace tokenizers
+
+Backends: Memory (default), SQLite (persistent), Redis (distributed multi-server)
+
+The demo video shows it in action: Generate 1000 primes → paginate → pass the ref_id to another server for analysis → transform and chain results. All without flooding the agent's context.
+
+Built for FastMCP servers. Python 3.10+.
+
+Would love your feedback! Try it out, open issues, or drop a comment with your use cases. What context management challenges are you facing with AI agents?
+
+🔗 Links in first comment
+
+#OpenSource #AI #MCP #Python #FastMCP #LLM #AgentSystems
+
+---
+FIRST COMMENT:
+
+GitHub: https://github.com/l4b4r4b4b4/mcp-refcache
+PyPI: https://pypi.org/project/mcp-refcache/
+
+pip install mcp-refcache
