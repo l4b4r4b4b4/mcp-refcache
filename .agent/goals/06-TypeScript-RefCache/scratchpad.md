@@ -1,6 +1,6 @@
 # Goal: TypeScript RefCache (mcp-refcache-ts)
 
-> **Status**: ⚪ Not Started
+> **Status**: 🟡 In Progress
 > **Priority**: P1 (High)
 > **Created**: 2025-01-30
 > **Updated**: 2025-01-30
@@ -157,7 +157,7 @@ After extensive experience building custom MCP servers, TypeScript on Bun offers
 
 | Task ID | Description | Status | Depends On |
 |---------|-------------|--------|------------|
-| Task-00 | Monorepo Migration (Bun + Python) | ⚪ Not Started | - |
+| Task-00 | Monorepo Migration (Bun + Python) | 🟢 Complete | - |
 | Task-01 | Project Setup & Tooling | ⚪ Not Started | Task-00 |
 | Task-02 | Models & Zod Schemas | ⚪ Not Started | Task-01 |
 | Task-03 | Backend Protocol & MemoryBackend | ⚪ Not Started | Task-02 |
