@@ -13,7 +13,7 @@
 | 03 | KI-Strategie-Presentation | 🟢 Complete | P1 | 2025-01-20 |
 | 04 | Async-Task-Backends | 🟡 In Progress | P1 | 2026-01-19 |
 | 05 | Real-Estate-Sustainability-MCP | 🔴 Not Started | P1 | 2024-12-28 |
-| 06 | (Reserved) | ⚪ Not Started | - | - |
+| 06 | TypeScript-RefCache | ⚪ Not Started | P1 | 2025-01-30 |
 | 07 | (Reserved) | ⚪ Not Started | - | - |
 | 08 | (Reserved) | ⚪ Not Started | - | - |
 | 09 | (Reserved) | ⚪ Not Started | - | - |
@@ -48,6 +48,7 @@
 - [03-KI-Strategie-Presentation](./03-KI-Strategie-Presentation/scratchpad.md) — 4-Folien PPTX für KI-Strategie 2026 Meeting
 - [04-Async-Timeout-Fallback](./04-Async-Timeout-Fallback/scratchpad.md) — Async task execution with pluggable backends (v0.2.0 main feature)
 - [05-Real-Estate-Sustainability-MCP](./05-Real-Estate-Sustainability-MCP/scratchpad.md) — Real Estate Sustainability Analysis MCP server with Excel, PDF, and sustainability frameworks
+- [06-TypeScript-RefCache](./06-TypeScript-RefCache/scratchpad.md) — Port mcp-refcache to TypeScript/Bun with FastMCP (TS) integration and template repository
 
 ---
 
@@ -108,6 +109,34 @@ Build a comprehensive Real Estate Sustainability Analysis MCP server using fastm
 - **Target Users**: Real estate developers, sustainability consultants, facility managers
 - **Status**: 🔴 Not Started — Ready for cookiecutter generation
 
+### 06-TypeScript-RefCache
+
+Port `mcp-refcache` to TypeScript/Bun as `mcp-refcache-ts` for the Node.js MCP ecosystem:
+
+- **Motivation**: TypeScript on Bun offers 4x faster startup, native SQLite, native TypeScript execution
+- **Target Framework**: FastMCP (TypeScript) by @punkpeye - most popular TS MCP framework
+- **Features**: Full feature parity with Python v0.2.0 including async task system
+- **Components**:
+  - Core RefCache class with set/get/resolve/delete
+  - Memory, SQLite, Redis backends
+  - Access control (Actor, Permission, AccessPolicy)
+  - Preview system with token counting (tiktoken)
+  - Async task execution with MemoryTaskBackend
+  - FastMCP integration helpers (cached wrapper, context derivation)
+- **Template**: `fastmcp-ts-template` - Cookiecutter template like Python's fastmcp-template
+- **Status**: ⚪ Not Started — 10 tasks defined
+- **Tasks**:
+  1. Project Setup & Tooling
+  2. Models & Zod Schemas
+  3. Backend Protocol & MemoryBackend
+  4. RefCache Core Implementation
+  5. Preview System (Token Counting)
+  6. Access Control System
+  7. SQLite & Redis Backends
+  8. Async Task System
+  9. FastMCP Integration
+  10. Template Repository
+
 ---
 
 ## Notes
@@ -120,6 +149,15 @@ Build a comprehensive Real Estate Sustainability Analysis MCP server using fastm
 ---
 
 ## Recent Activity
+
+### 2025-01-30
+- Created Goal 06: TypeScript-RefCache
+  - Port mcp-refcache to TypeScript/Bun for Node.js MCP ecosystem
+  - Target FastMCP (TypeScript) by @punkpeye as integration framework
+  - 10 tasks covering full port from project setup to template repository
+  - Key decisions: Bun-first, Zod schemas, ESM-only, Vitest testing
+  - Research completed: FastMCP TS API, @modelcontextprotocol/sdk, Bun capabilities
+  - Includes companion `fastmcp-ts-template` (Task-10)
 
 ### 2026-01-19
 - Goal 04: Hatchet SDK research complete

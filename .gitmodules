@@ -13,3 +13,6 @@
 [submodule "examples/portfolio-mcp"]
 	path = examples/portfolio-mcp
 	url = https://github.com/l4b4r4b4b4/portfolio-mcp.git
+[submodule "examples/legal-mcp"]
+	path = examples/legal-mcp
+	url = https://github.com/l4b4r4b4b4/legal-mcp

@@ -38,6 +38,7 @@
 | 02 | [Faster-MCP](./goals/02-Faster-MCP/scratchpad.md) | ⚪ Not Started | P3 (Low) |
 | 04 | [Async-Task-Backends](./goals/04-Async-Timeout-Fallback/scratchpad.md) | 🟢 Tasks 01-05, 09 Done | P1 (High) |
 | 05 | [Real-Estate-Sustainability-MCP](./goals/05-Real-Estate-Sustainability-MCP/scratchpad.md) | 🔴 Not Started | P1 (High) |
+| 06 | [TypeScript-RefCache](./goals/06-TypeScript-RefCache/scratchpad.md) | ⚪ Not Started | P1 (High) |
 
 See [Goals Index](./goals/scratchpad.md) for full tracking.
 
@@ -48,6 +49,45 @@ See [Goals Index](./goals/scratchpad.md) for full tracking.
 **02-Faster-MCP**: Research feasibility of Robyn-based (Rust runtime) alternative to FastMCP. Motivated by 40x+ performance improvement potential (10k+ RPS vs ~246 RPS).
 
 **04-Async-Task-Backends**: Add async task execution to `@cache.cached()` with pluggable backends. `TaskBackend` protocol enables `MemoryTaskBackend` (ThreadPoolExecutor, MVP) and future `HatchetTaskBackend` (distributed). When computations exceed `async_timeout`, returns reference immediately with "processing" status. Client polls for completion. **Tasks 01-05, 09 complete. 718 tests passing.** Next: Create minimal MCP server example, test in Zed, then release v0.2.0.
+
+**06-TypeScript-RefCache**: Restructure repo into **Bun+Python monorepo** housing both implementations. Port `mcp-refcache` to TypeScript for Node.js MCP ecosystem. Target FastMCP (TypeScript) by @punkpeye. Full feature parity: RefCache, backends (Memory/SQLite/Redis), access control, preview system, async tasks. Plus companion `fastmcp-ts-template`. **11 tasks defined (Task-00 through Task-10), monorepo reference files collected.**
+
+---
+
+## Session Log (2025-01-30)
+
+### Completed This Session
+1. **Goal 06: TypeScript-RefCache** — Created comprehensive goal with 11 tasks
+   - Researched FastMCP (TypeScript) by @punkpeye, @modelcontextprotocol/sdk, Bun capabilities
+   - Created detailed task scratchpads (Task-00 through Task-10)
+   - Task-00: Monorepo Migration — restructure repo to Bun+Python monorepo
+   - Tasks 01-10: TypeScript implementation from setup to template
+
+2. **Monorepo Reference Collection**
+   - Explored `docproc-platform` Bun+Python monorepo pattern
+   - Copied reference files to `archive/bun-python-monorepo-reference/`
+   - Includes: root package.json, flake.nix, tsconfig.json, Python app examples
+
+3. **Key Decisions Made**
+   - Monorepo (not separate repo) — single source of truth
+   - Follow docproc-platform pattern (proven Bun+Python structure)
+   - Bun-first but Node.js compatible
+   - Zod for schemas (matches FastMCP pattern)
+
+### Files Created
+- `.agent/goals/06-TypeScript-RefCache/scratchpad.md` — Main goal
+- `.agent/goals/06-TypeScript-RefCache/Task-00/scratchpad.md` — Monorepo Migration
+- `.agent/goals/06-TypeScript-RefCache/Task-01/scratchpad.md` — TS Package Setup
+- `.agent/goals/06-TypeScript-RefCache/Task-02/scratchpad.md` — Models & Zod
+- `.agent/goals/06-TypeScript-RefCache/Task-03/scratchpad.md` — Backend Protocol
+- `.agent/goals/06-TypeScript-RefCache/Task-04/scratchpad.md` — RefCache Core
+- `.agent/goals/06-TypeScript-RefCache/Task-05/scratchpad.md` — Preview System
+- `.agent/goals/06-TypeScript-RefCache/Task-06/scratchpad.md` — Access Control
+- `.agent/goals/06-TypeScript-RefCache/Task-07/scratchpad.md` — SQLite & Redis
+- `.agent/goals/06-TypeScript-RefCache/Task-08/scratchpad.md` — Async Task System
+- `.agent/goals/06-TypeScript-RefCache/Task-09/scratchpad.md` — FastMCP Integration
+- `.agent/goals/06-TypeScript-RefCache/Task-10/scratchpad.md` — Template Repository
+- `archive/bun-python-monorepo-reference/` — Reference files from docproc-platform
 
 ---
 
@@ -77,6 +117,63 @@ See [Goals Index](./goals/scratchpad.md) for full tracking.
 ---
 
 ## Next Session Handoff
+
+````
+Goal 06: TypeScript-RefCache — Task-00 Monorepo Migration
+
+## Context
+- Goal 06 created with 11 detailed tasks for porting mcp-refcache to TypeScript
+- Decision: Convert existing repo to Bun+Python monorepo (not separate repo)
+- Reference files from docproc-platform copied to `archive/bun-python-monorepo-reference/`
+- See `.agent/goals/06-TypeScript-RefCache/scratchpad.md` for full goal details
+
+## What Was Done (Planning Session)
+- Researched FastMCP (TypeScript), @modelcontextprotocol/sdk, Bun ecosystem
+- Created 11 task scratchpads with detailed implementation designs
+- Collected monorepo reference files from docproc-platform
+- Documented architecture: packages/python/ + packages/typescript/
+
+## Current Task: Task-00 Monorepo Migration
+Start by restructuring the repo:
+
+1. Create feature branch:
+   ```bash
+   git checkout -b feat/monorepo-restructure
+   ```
+
+2. Move Python code to packages/python/:
+   ```bash
+   mkdir -p packages/python
+   git mv src packages/python/
+   git mv tests packages/python/
+   git mv pyproject.toml packages/python/
+   git mv uv.lock packages/python/
+   ```
+
+3. Create root package.json with Bun workspaces
+
+4. Update flake.nix to support both Bun and Python
+
+5. Verify Python tests still pass:
+   ```bash
+   cd packages/python && uv sync && uv run pytest
+   ```
+
+## Key Files
+- Goal: `.agent/goals/06-TypeScript-RefCache/scratchpad.md`
+- Task-00: `.agent/goals/06-TypeScript-RefCache/Task-00/scratchpad.md`
+- Reference: `archive/bun-python-monorepo-reference/`
+
+## Guidelines
+- Follow `.rules` (TDD, document as you go)
+- Don't break existing Python functionality
+- Run: `cd packages/python && uv run pytest` after each change
+- Reference docproc-platform pattern in archive/
+````
+
+---
+
+## Previous Session Handoff (2025-01-20)
 
 ```
 Continue mcp-refcache: Goal 04 - Test Async Timeout in Real MCP Server
