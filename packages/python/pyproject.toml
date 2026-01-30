@@ -169,8 +169,6 @@ ignore = [
     "D100",    # missing docstring in public module (too strict for now)
     "D104",    # missing docstring in public package
     "D107",    # missing docstring in __init__
-    "ANN101",  # missing type annotation for self
-    "ANN102",  # missing type annotation for cls
     "ANN401",  # dynamically typed expressions (Any) are disallowed
 ]
 

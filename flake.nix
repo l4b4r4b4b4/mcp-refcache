@@ -1,5 +1,5 @@
 {
-  description = "mcp-refcache - Reference-based caching for FastMCP servers";
+  description = "mcp-refcache - Reference-based caching for FastMCP servers (Python + TypeScript monorepo)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -32,6 +32,10 @@
 
           targetPkgs = pkgs':
             with pkgs'; [
+              # JavaScript/TypeScript (Bun)
+              bun
+              nodejs_22
+
               # Python and uv
               python312
               uv
@@ -70,66 +74,73 @@
             ];
 
           profile = ''
-            echo "📦 mcp-refcache Development Environment"
-            echo "========================================"
+            echo "📦 mcp-refcache Development Environment (Monorepo)"
+            echo "==================================================="
+
+            # Monorepo structure: packages/python/ and packages/typescript/
+            PYTHON_PKG="$PWD/packages/python"
 
             # Create and activate uv virtual environment if it doesn't exist
-            if [ ! -d ".venv" ]; then
-              echo "📦 Creating uv virtual environment..."
-              uv venv --python python3.12 --prompt "mcp-refcache"
+            if [ -d "$PYTHON_PKG" ]; then
+              if [ ! -d "$PYTHON_PKG/.venv" ]; then
+                echo "📦 Creating Python virtual environment..."
+                cd "$PYTHON_PKG" && uv venv --python python3.12 --prompt "mcp-refcache-py" && cd "$PWD"
+              fi
+
+              # Activate the virtual environment
+              source "$PYTHON_PKG/.venv/bin/activate"
+
+              # Set a recognizable name for IDEs
+              export VIRTUAL_ENV_PROMPT="mcp-refcache-py"
+
+              # Sync Python dependencies
+              echo "🔄 Syncing Python dependencies..."
+              cd "$PYTHON_PKG" && uv sync --quiet && cd "$OLDPWD"
             fi
 
-            # Activate the virtual environment
-            source .venv/bin/activate
-
-            # Set a recognizable name for IDEs
-            export VIRTUAL_ENV_PROMPT="mcp-refcache"
-
-            # Sync dependencies
-            if [ -f "pyproject.toml" ]; then
-              echo "🔄 Syncing dependencies..."
-              uv sync --quiet
-            else
-              echo "⚠️  No pyproject.toml found. Run 'uv init' to create project."
+            # Install Bun dependencies if package.json exists at root
+            if [ -f "package.json" ]; then
+              echo "🔄 Installing Bun dependencies..."
+              bun install --silent 2>/dev/null || true
             fi
 
             echo ""
-            echo "✅ Python: $(python --version)"
+            echo "✅ Python: $(python --version 2>/dev/null || echo 'not activated')"
             echo "✅ uv:     $(uv --version)"
-            echo "✅ Virtual environment: activated (.venv)"
-            echo "✅ PYTHONPATH: $PWD/src:$PWD"
+            echo "✅ Bun:    $(bun --version)"
+            echo "✅ Node:   $(node --version)"
+            echo "✅ PYTHONPATH: $PYTHON_PKG/src"
           '';
 
           runScript = ''
             # Set shell for the environment
             SHELL=${pkgs.zsh}/bin/zsh
 
-            # Set PYTHONPATH to project root for module imports
-            export PYTHONPATH="$PWD/src:$PWD"
+            # Set PYTHONPATH to monorepo Python package
+            export PYTHONPATH="$PWD/packages/python/src:$PWD"
             export SSL_CERT_FILE="/etc/ssl/certs/ca-bundle.crt"
 
             echo ""
-            echo "📚 mcp-refcache Quick Reference:"
+            echo "📚 mcp-refcache Monorepo Quick Reference:"
             echo ""
-            echo "🔧 Development:"
-            echo "  uv sync                    - Sync dependencies"
-            echo "  uv run pytest              - Run tests"
-            echo "  uv run ruff check .        - Lint code"
-            echo "  uv run ruff format .       - Format code"
-            echo "  uv lock --upgrade          - Update all dependencies"
+            echo "🐍 Python (packages/python/):"
+            echo "  cd packages/python && uv run pytest   - Run Python tests"
+            echo "  cd packages/python && uv run ruff check . - Lint Python"
+            echo "  bun run test:py                       - Run from root"
             echo ""
-            echo "📦 Package Management:"
-            echo "  uv add <package>           - Add runtime dependency"
-            echo "  uv add --dev <package>     - Add dev dependency"
-            echo "  uv remove <package>        - Remove dependency"
+            echo "🟦 TypeScript (packages/typescript/):"
+            echo "  cd packages/typescript && bun test    - Run TS tests"
+            echo "  cd packages/typescript && bun run build - Build TS"
+            echo "  bun run test:ts                       - Run from root"
             echo ""
-            echo "🔗 Git Ignore Templates:"
-            echo "  gibo list                  - List available templates"
-            echo "  gibo dump Python > .gitignore  - Generate Python .gitignore"
+            echo "📦 Monorepo Scripts (from root):"
+            echo "  bun run test                          - Run all tests"
+            echo "  bun run lint                          - Lint all code"
+            echo "  bun install                           - Install TS deps"
             echo ""
-            echo "🧪 Testing in other projects:"
-            echo "  uv add --editable ../mcp-refcache           - Local dev install"
-            echo "  uv add mcp-refcache@git+https://github.com/l4b4r4b4b4/mcp-refcache"
+            echo "🔧 Package Management:"
+            echo "  cd packages/python && uv add <pkg>    - Add Python dep"
+            echo "  cd packages/typescript && bun add <pkg> - Add TS dep"
             echo ""
             echo "🚀 Ready to build! 📦"
             echo ""

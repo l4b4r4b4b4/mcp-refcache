@@ -10,9 +10,12 @@ env:
   CI: true
 
 jobs:
-  test:
+  test-python:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/python
     strategy:
       fail-fast: false
       matrix:
@@ -52,11 +55,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-xml
-          path: coverage.xml
+          path: packages/python/coverage.xml
 
-  lint:
-    name: Lint
+  lint-python:
+    name: Lint Python
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/python
 
     steps:
       - name: Check out code

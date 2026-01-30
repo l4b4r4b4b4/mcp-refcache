@@ -432,7 +432,7 @@ class TestContextScopedCaching:
     def test_mock_context_class(self) -> None:
         """Test the MockContext class used in mcp_server example."""
         # Import the module
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -477,7 +477,7 @@ class TestContextScopedCaching:
 
     def test_enable_test_context_tool(self) -> None:
         """Test the enable_test_context tool function logic."""
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -504,7 +504,7 @@ class TestContextScopedCaching:
 
     def test_set_test_context_tool(self) -> None:
         """Test the set_test_context tool function logic."""
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -541,7 +541,7 @@ class TestContextScopedCaching:
 
     def test_reset_test_context_tool(self) -> None:
         """Test the reset_test_context tool function logic."""
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -583,7 +583,7 @@ class TestLangfuseIntegration:
         from pathlib import Path
         from unittest.mock import MagicMock, patch
 
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         # Mock the langfuse module before importing
@@ -672,7 +672,7 @@ class TestLangfuseIntegration:
         import sys
         from pathlib import Path
 
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -725,7 +725,7 @@ class TestLangfuseIntegration:
         import sys
         from pathlib import Path
 
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -756,7 +756,7 @@ class TestLangfuseIntegration:
         import sys
         from pathlib import Path
 
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -789,7 +789,7 @@ class TestLangfuseIntegration:
         import sys
         from pathlib import Path
 
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -850,7 +850,7 @@ class TestTracedRefCacheCachedDecorator:
         from pathlib import Path
         from unittest.mock import MagicMock, patch
 
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -903,7 +903,7 @@ class TestTracedRefCacheCachedDecorator:
         import sys
         from pathlib import Path
 
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -954,7 +954,7 @@ class TestTracedRefCacheCachedDecorator:
         from pathlib import Path
         from unittest.mock import MagicMock, patch
 
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -1020,7 +1020,7 @@ class TestTracedRefCacheCachedDecorator:
         import sys
         from pathlib import Path
 
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -1061,7 +1061,7 @@ class TestTracedRefCacheCachedDecorator:
         from pathlib import Path
         from unittest.mock import MagicMock, patch
 
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -1130,7 +1130,7 @@ class TestTracedRefCacheCachedDecorator:
         from pathlib import Path
         from unittest.mock import MagicMock, patch
 
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:
@@ -1205,7 +1205,7 @@ class TestTracedRefCacheCachedDecorator:
         from pathlib import Path
         from unittest.mock import MagicMock, patch
 
-        examples_path = str(Path(__file__).parent.parent / "examples")
+        examples_path = str(Path(__file__).parent.parent.parent.parent / "examples")
         sys.path.insert(0, examples_path)
 
         try:

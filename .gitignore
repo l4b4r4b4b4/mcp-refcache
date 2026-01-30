@@ -2,6 +2,16 @@
 archive
 __MACOSX
 
+# ===================
+# Node.js / Bun
+# ===================
+node_modules/
+bun.lockb
+.bun/
+dist/
+*.tsbuildinfo
+.turbo/
+
 __pycache__/
 *.py[cod]
 *$py.class
