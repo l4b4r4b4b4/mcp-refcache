@@ -1,0 +1,24 @@
+# Build output
+dist/
+
+# Dependencies (managed by root workspace)
+node_modules/
+
+# Coverage
+coverage/
+*.lcov
+
+# TypeScript incremental compilation
+*.tsbuildinfo
+
+# Editor
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+*.snap

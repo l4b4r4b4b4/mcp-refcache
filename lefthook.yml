@@ -1,0 +1,41 @@
+# Lefthook — Polyglot git hooks for mcp-refcache monorepo
+# https://github.com/evilmartians/lefthook
+#
+# Reference: .agent/references/fractal-agents-runtime/lefthook.yml
+
+pre-commit:
+  parallel: true
+  commands:
+    python-lint:
+      root: packages/python/
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files} && uv run ruff format {staged_files}
+      stage_fixed: true
+
+    ts-typecheck:
+      root: packages/typescript/
+      glob: "*.ts"
+      run: bunx tsc --noEmit
+
+pre-push:
+  parallel: true
+  commands:
+    no-merge-commits:
+      run: |
+        # Reject merge commits — enforce rebase workflow for linear history.
+        MERGE_COMMITS=$(git log --merges --oneline @{upstream}..HEAD 2>/dev/null)
+        if [ -n "$MERGE_COMMITS" ]; then
+          echo "❌ Merge commits detected — use rebase instead:"
+          echo "$MERGE_COMMITS"
+          echo ""
+          echo "Fix: git rebase --onto <target> <merge-base> <branch>"
+          exit 1
+        fi
+
+    python-test:
+      root: packages/python/
+      run: uv run pytest -q
+
+    ts-test:
+      root: packages/typescript/
+      run: bun test
