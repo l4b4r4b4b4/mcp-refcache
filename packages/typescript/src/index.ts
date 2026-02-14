@@ -17,18 +17,97 @@
 export const VERSION = "0.1.0";
 
 // ── Models & Schemas ─────────────────────────────────────────────────
-// TODO(Task-02): Export Zod schemas and inferred types
-// export { CacheReferenceSchema, type CacheReference } from "./models/cache-reference.js";
-// export { CacheResponseSchema, type CacheResponse } from "./models/cache-response.js";
-// export { PaginatedResponseSchema, type PaginatedResponse } from "./models/paginated-response.js";
-// export { PreviewConfigSchema, type PreviewConfig } from "./models/preview-config.js";
-// export { PreviewStrategy, SizeMode } from "./models/enums.js";
-// export { AsyncTaskResponseSchema, type AsyncTaskResponse } from "./models/async-task-response.js";
-// export { TaskInfoSchema, type TaskInfo, TaskStatus, type TaskProgress } from "./models/task-info.js";
+
+// Enums
+export {
+  ActorType,
+  ActorTypeSchema,
+  AsyncResponseFormat,
+  AsyncResponseFormatSchema,
+  PreviewStrategy,
+  PreviewStrategySchema,
+  SizeMode,
+  SizeModeSchema,
+  TaskStatus,
+  TaskStatusSchema,
+} from "./models/index.js";
+
+export type {
+  ActorTypeValue,
+  AsyncResponseFormatValue,
+  PreviewStrategyValue,
+  SizeModeValue,
+  TaskStatusValue,
+} from "./models/index.js";
+
+// Permissions
+export {
+  AccessPolicySchema,
+  agentCan,
+  combinePermissions,
+  hasPermission,
+  Permission,
+  PermissionSchema,
+  POLICY_EXECUTE_ONLY,
+  POLICY_PUBLIC,
+  POLICY_READ_ONLY,
+  POLICY_USER_ONLY,
+  userCan,
+} from "./models/index.js";
+
+export type { AccessPolicy, PermissionFlags } from "./models/index.js";
+
+// Preview
+export {
+  PreviewConfigSchema,
+  PreviewResultSchema,
+} from "./models/index.js";
+
+export type { PreviewConfig, PreviewResult } from "./models/index.js";
+
+// Cache
+export {
+  CacheEntrySchema,
+  CacheReferenceSchema,
+  CacheResponseSchema,
+  isExpired,
+  PaginatedResponseSchema,
+  paginateList,
+} from "./models/index.js";
+
+export type {
+  CacheEntry,
+  CacheReference,
+  CacheResponse,
+  PaginatedResponse,
+} from "./models/index.js";
+
+// Tasks
+export {
+  asyncTaskResponseFromInfo,
+  AsyncTaskResponseSchema,
+  asyncTaskResponseToDict,
+  canRetry,
+  elapsedSeconds,
+  ExpectedSchemaSchema,
+  isTerminal,
+  RetryInfoSchema,
+  TaskInfoSchema,
+  TaskProgressSchema,
+} from "./models/index.js";
+
+export type {
+  AsyncTaskResponse,
+  ExpectedSchema,
+  RetryInfo,
+  TaskInfo,
+  TaskProgress,
+  TaskProgressInput,
+} from "./models/index.js";
 
 // ── Backends ─────────────────────────────────────────────────────────
 // TODO(Task-03): Export backend interfaces and implementations
-// export type { CacheBackend, CacheEntry } from "./backends/types.js";
+// export type { CacheBackend } from "./backends/types.js";
 // export { MemoryBackend } from "./backends/memory.js";
 
 // TODO(Task-07): SQLite and Redis backends
@@ -40,19 +119,18 @@ export const VERSION = "0.1.0";
 // export { MemoryTaskBackend } from "./backends/task-memory.js";
 
 // ── Access Control ───────────────────────────────────────────────────
-// TODO(Task-06): Export access control types
-// export { Permission, AccessPolicy } from "./access/permissions.js";
-// export { POLICY_PUBLIC, POLICY_USER_ONLY, POLICY_EXECUTE_ONLY, POLICY_READ_ONLY } from "./access/permissions.js";
+// TODO(Task-06): Export Actor, DefaultActor, resolveActor, PermissionChecker, etc.
 // export type { Actor, ActorLike } from "./access/actor.js";
-// export { DefaultActor, ActorType, resolveActor } from "./access/actor.js";
+// export { DefaultActor, resolveActor } from "./access/actor.js";
 // export type { PermissionChecker } from "./access/checker.js";
 // export { DefaultPermissionChecker, PermissionDenied } from "./access/checker.js";
 // export type { NamespaceResolver } from "./access/namespace.js";
-// export { DefaultNamespaceResolver, type NamespaceInfo } from "./access/namespace.js";
+// export { DefaultNamespaceResolver } from "./access/namespace.js";
+// export type { NamespaceInfo } from "./access/namespace.js";
 
 // ── Preview System ───────────────────────────────────────────────────
 // TODO(Task-05): Export preview generators and size measurers
-// export type { PreviewGenerator, PreviewResult } from "./preview/types.js";
+// export type { PreviewGenerator } from "./preview/types.js";
 // export { SampleGenerator, PaginateGenerator, TruncateGenerator } from "./preview/generators.js";
 // export { getDefaultGenerator } from "./preview/generators.js";
 // export type { SizeMeasurer, Tokenizer } from "./context/types.js";
