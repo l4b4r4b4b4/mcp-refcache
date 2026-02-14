@@ -118,14 +118,21 @@ export { MemoryBackend } from "./backends/index.js";
 // export { MemoryTaskBackend } from "./backends/task-memory.js";
 
 // ── Access Control ───────────────────────────────────────────────────
-// TODO(Task-06): Export Actor, DefaultActor, resolveActor, PermissionChecker, etc.
-// export type { Actor, ActorLike } from "./access/actor.js";
-// export { DefaultActor, resolveActor } from "./access/actor.js";
-// export type { PermissionChecker } from "./access/checker.js";
-// export { DefaultPermissionChecker, PermissionDenied } from "./access/checker.js";
-// export type { NamespaceResolver } from "./access/namespace.js";
-// export { DefaultNamespaceResolver } from "./access/namespace.js";
-// export type { NamespaceInfo } from "./access/namespace.js";
+export type { Actor, ActorLike } from "./access/index.js";
+
+export { DefaultActor, resolveActor } from "./access/index.js";
+
+export type { PermissionChecker } from "./access/index.js";
+
+export {
+  DefaultPermissionChecker,
+  PermissionDenied,
+  permissionNames,
+} from "./access/index.js";
+
+export type { NamespaceResolver } from "./access/index.js";
+
+export { DefaultNamespaceResolver, NamespaceInfo } from "./access/index.js";
 
 // ── Preview System ───────────────────────────────────────────────────
 export type { PreviewGenerator } from "./preview/index.js";
