@@ -4,7 +4,7 @@
 - [ ] Not Started
 - [ ] In Progress
 - [ ] Blocked
-- [ ] Complete
+- [x] Complete ✅ (2025-07-16)
 
 ## Objective
 Set up the TypeScript package (`packages/typescript/`) within the restructured monorepo, including TypeScript configuration, `bun test` runner, lefthook polyglot git hooks, and CI/CD pipeline integration.
@@ -135,6 +135,7 @@ _Running log of findings, decisions, and observations._
 |------|---------|
 | 2025-01-30 | Task created with initial approach |
 | 2025-07-16 | Updated: Vitest → `bun test`, added Lefthook, added fractal-agents-runtime reference |
+| 2025-07-16 | **Completed**: Scaffolded `packages/typescript/`, `bun test` (3 pass), lefthook, CI, build verified |
 
 ### Key Decisions
 
@@ -346,6 +347,24 @@ bunx lefthook run pre-push    # Runs test hooks
 # 6. Smoke test: import works
 echo 'import { version } from "mcp-refcache"; console.log(version);' | bun run -
 ```
+
+### Verification Results (2025-07-16)
+
+All checks passed:
+
+| Check | Result | Details |
+|-------|--------|---------|
+| `bun install` | ✅ | 12 packages installed (431ms) |
+| `bunx tsc --noEmit` | ✅ | Clean (0 errors) |
+| `bun test` | ✅ | 3 pass, 0 fail (11ms) |
+| `bun run build` | ✅ | `dist/index.js` + `dist/index.d.ts` + source maps |
+| `bun run test:py` | ✅ | 718 passed, 39 skipped (13.86s) |
+| `bun run test` (root) | ✅ | Both TS + Python pass |
+| `bun run lint:ts` | ✅ | `tsc --noEmit` clean |
+| `lefthook install` | ✅ | pre-commit + pre-push hooks active |
+| Lefthook on commit | ✅ | `ts-typecheck` ran automatically and passed (0.60s) |
+
+Commit: `a3fb939` on `feat/monorepo-restructure`
 
 ---
 
