@@ -156,10 +156,28 @@ export {
 } from "./context/index.js";
 
 // ── Core Cache ───────────────────────────────────────────────────────
-// TODO(Task-04): Export RefCache class
-// export { RefCache } from "./cache.js";
+export { RefCache } from "./cache.js";
+
+export type {
+  DeleteOptions,
+  GetOptions,
+  RefCacheOptions,
+  ResolveOptions,
+  SetOptions,
+} from "./cache.js";
 
 // ── Resolution ───────────────────────────────────────────────────────
-// TODO(Task-04): Export ref resolution utilities
-// export { RefResolver, isRefId, resolveRefs, resolveKwargs } from "./resolution.js";
-// export { CircularReferenceError } from "./resolution.js";
+export {
+  CircularReferenceError,
+  isRefId,
+  RefResolver,
+  resolveArgsAndKwargs,
+  resolveKwargs,
+  resolveRefs,
+} from "./resolution.js";
+
+export type {
+  RefResolverOptions,
+  ResolveOptions as RefResolveOptions,
+  ResolutionResult,
+} from "./resolution.js";
