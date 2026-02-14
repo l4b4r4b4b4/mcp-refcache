@@ -7,22 +7,25 @@
 - [ ] Complete
 
 ## Objective
-Set up the TypeScript package (`packages/typescript/`) within the restructured monorepo, including TypeScript configuration, testing framework, linting, and CI/CD pipeline integration.
+Set up the TypeScript package (`packages/typescript/`) within the restructured monorepo, including TypeScript configuration, `bun test` runner, lefthook polyglot git hooks, and CI/CD pipeline integration.
 
-**Prerequisite**: Task-00 (Monorepo Migration) must be complete first.
+**Prerequisite**: Task-00 (Monorepo Migration) must be complete first. ✅
 
 ---
 
 ## Context
-After Task-00 restructures the repo into a Bun+Python monorepo, this task sets up the TypeScript package within `packages/typescript/`. The monorepo root already has `package.json` with workspaces and `flake.nix` with Bun support. This task focuses on the TypeScript-specific configuration within that structure.
+Task-00 restructured the repo into a Bun+Python monorepo. The root already has `package.json` with workspaces and `flake.nix` with Bun support. This task sets up the TypeScript package within `packages/typescript/` and adds polyglot tooling (lefthook) following the `fractal-agents-runtime` reference pattern.
+
+**Key reference**: `.agent/references/fractal-agents-runtime/` — see `ts-app-package.json`, `ts-app-tsconfig.json`, `lefthook.yml`, and `ts-src-examples/` for proven patterns.
 
 ## Acceptance Criteria
 - [ ] `packages/typescript/` directory created with proper structure
 - [ ] TypeScript 5.x configured with strict mode (extends root tsconfig)
-- [ ] Vitest configured for testing (Bun-compatible)
-- [ ] ESLint + Prettier configured
-- [ ] GitHub Actions CI workflow for lint/test/build
+- [ ] `bun test` configured (built-in Jest-compatible runner, zero external deps)
+- [ ] Lefthook installed and configured for polyglot git hooks (replaces pre-commit)
+- [ ] GitHub Actions CI workflow for lint/test/build (both ecosystems)
 - [ ] Package.json with proper exports and type declarations
+- [ ] Root `package.json` scripts updated for both ecosystems
 - [ ] README with project overview and development setup
 - [ ] LICENSE file (MIT)
 - [ ] `.gitignore` properly configured
@@ -31,24 +34,21 @@ After Task-00 restructures the repo into a Bun+Python monorepo, this task sets u
 ---
 
 ## Approach
-Build on the monorepo structure created in Task-00. Create the TypeScript package within `packages/typescript/` and integrate it with the existing workspace configuration.
+Build on the monorepo structure created in Task-00. Create the TypeScript package within `packages/typescript/`, add `bun test` for testing, install lefthook for polyglot git hooks, and integrate with the existing workspace configuration.
 
 ### Steps
 
 1. **Create TypeScript package directory**
    ```bash
-   mkdir -p packages/typescript/src
-   cd packages/typescript
+   mkdir -p packages/typescript/src packages/typescript/tests
    ```
 
-2. **Initialize package.json**
-   ```bash
-   # From packages/typescript/
-   bun init -y
-   # Edit to set proper name: "mcp-refcache"
-   ```
+2. **Create package.json** (see Commands & Snippets below)
+   - Name: `mcp-refcache`
+   - Use `bun test` (built-in, no Vitest dependency)
+   - Peer dependency on `fastmcp` (optional)
 
-3. **Link to workspace** (should auto-detect from root workspaces config)
+3. **Link to workspace** (auto-detected from root `package.json` workspaces)
    ```bash
    cd ../..  # back to repo root
    bun install
@@ -57,39 +57,45 @@ Build on the monorepo structure created in Task-00. Create the TypeScript packag
 4. **Configure TypeScript**
    - Extend root `tsconfig.json` (already created in Task-00)
    - Package-specific `tsconfig.json` in `packages/typescript/`
-   - Enable `moduleResolution: "bundler"` for modern resolution
+   - `moduleResolution: "bundler"`, `outDir: "dist"`, declarations enabled
 
-5. **Set up Vitest**
+5. **Set up `bun test`**
+   - No external deps needed — Bun's built-in test runner is Jest-compatible
+   - Uses `describe`, `it`, `expect` from `bun:test`
+   - Create `tests/index.test.ts` as smoke test
+   - See `.agent/references/fractal-agents-runtime/ts-src-examples/storage.test.ts` for pattern
+
+6. **Install and configure Lefthook** (replaces `.pre-commit-config.yaml`)
    ```bash
-   bun add -D vitest @vitest/coverage-v8
+   # From repo root
+   bun add -D lefthook
+   # lefthook.yml at repo root
    ```
+   - Pre-commit: Python ruff lint + TS type-check (parallel)
+   - Pre-push: Python tests + TS tests + reject merge commits (parallel)
+   - Follow `.agent/references/fractal-agents-runtime/lefthook.yml` pattern
 
-6. **Configure ESLint + Prettier**
-   ```bash
-   bun add -D eslint @typescript-eslint/eslint-plugin @typescript-eslint/parser
-   bun add -D prettier eslint-config-prettier eslint-plugin-perfectionist
-   ```
+7. **Update root package.json scripts**
+   - Add `postinstall: lefthook install`
+   - Ensure `test:ts`, `test:py`, `lint:ts`, `lint:py` all work
 
-7. **Create GitHub Actions workflow**
-   - Matrix testing: Bun + Node.js 20
-   - Lint, type-check, test with coverage
-   - Build and verify exports
+8. **Create GitHub Actions CI workflow**
+   - Matrix testing: Bun + Node.js 22
+   - Steps: lint, type-check, test, build
+   - Both Python and TypeScript in single workflow
 
-8. **Set up package exports**
+9. **Set up package exports for npm publishing**
    ```json
-   // packages/mcp-refcache/package.json
    {
-     "name": "mcp-refcache",
-     "type": "module",
      "exports": {
-       ".": {
-         "types": "./dist/index.d.ts",
-         "import": "./dist/index.js"
-       }
+       ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+       "./fastmcp": { "types": "./dist/fastmcp/index.d.ts", "import": "./dist/fastmcp/index.js" }
      },
      "files": ["dist", "README.md", "LICENSE"]
    }
    ```
+
+10. **Create initial `src/index.ts`** — placeholder re-export barrel file
 
 ---
 
@@ -109,13 +115,15 @@ mcp-refcache/
 │       ├── tests/
 │       │   └── index.test.ts
 │       ├── package.json
-│       ├── tsconfig.json
-│       └── vitest.config.ts
+│       └── tsconfig.json
 ├── package.json             # Root (from Task-00)
 ├── tsconfig.json            # Root (from Task-00)
+├── lefthook.yml             # NEW: Polyglot git hooks
 ├── flake.nix                # Updated in Task-00
 └── ...
 ```
+
+**Note**: No `vitest.config.ts` — we use `bun test` directly (zero-config for `.test.ts` files).
 
 ---
 
@@ -126,6 +134,15 @@ _Running log of findings, decisions, and observations._
 | Date | Summary |
 |------|---------|
 | 2025-01-30 | Task created with initial approach |
+| 2025-07-16 | Updated: Vitest → `bun test`, added Lefthook, added fractal-agents-runtime reference |
+
+### Key Decisions
+
+1. **`bun test` over Vitest**: Bun's built-in test runner is Jest-compatible (`describe`/`it`/`expect`), zero external deps, and faster. Confirmed working in fractal-agents-runtime. Import from `bun:test`.
+
+2. **Lefthook over pre-commit**: Pre-commit (Python tool) only handles Python hooks well. Lefthook is a single Go binary that handles polyglot hooks natively. fractal-agents-runtime uses it successfully for parallel Python+TS linting and testing.
+
+3. **No ESLint for v0.1.0**: TypeScript strict mode + `bunx tsc --noEmit` provides sufficient type safety. ESLint can be added later if needed. This keeps dev deps minimal (fractal-agents-runtime uses the same approach).
 
 ---
 
@@ -134,7 +151,7 @@ _What's preventing progress or what must be completed first._
 
 | Blocker/Dependency | Status | Resolution |
 |--------------------|--------|------------|
-| Task-00: Monorepo Migration | Required | Repo must be restructured first |
+| Task-00: Monorepo Migration | ✅ Complete | Repo restructured, Python in `packages/python/` |
 
 ---
 
@@ -153,30 +170,29 @@ _What's preventing progress or what must be completed first._
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./fastmcp": {
+      "types": "./dist/fastmcp/index.d.ts",
+      "import": "./dist/fastmcp/index.js"
     }
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "lint": "eslint src tests --ext .ts",
-    "format": "prettier --write .",
-    "typecheck": "tsc --noEmit"
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "lint": "bunx tsc --noEmit",
+    "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {
-    "zod": "^3.24.0",
-    "nanoid": "^5.0.0"
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@vitest/coverage-v8": "^1.6.0",
-    "typescript": "^5.4.0",
-    "vitest": "^1.6.0"
+    "typescript": "^5.7.0"
   },
   "peerDependencies": {
-    "fastmcp": "^1.27.0"
+    "fastmcp": ">=1.27.0"
   },
   "peerDependenciesMeta": {
     "fastmcp": { "optional": true }
@@ -189,8 +205,58 @@ _What's preventing progress or what must be completed first._
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "keywords": [
+    "mcp",
+    "fastmcp",
+    "cache",
+    "reference",
+    "context",
+    "llm",
+    "agent",
+    "bun"
+  ]
 }
+```
+
+### Root lefthook.yml
+```yaml
+# Lefthook — Polyglot git hooks for mcp-refcache monorepo
+# Reference: .agent/references/fractal-agents-runtime/lefthook.yml
+
+pre-commit:
+  parallel: true
+  commands:
+    python-lint:
+      root: packages/python/
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files} && uv run ruff format {staged_files}
+      stage_fixed: true
+
+    ts-typecheck:
+      root: packages/typescript/
+      glob: "*.ts"
+      run: bunx tsc --noEmit
+
+pre-push:
+  parallel: true
+  commands:
+    no-merge-commits:
+      run: |
+        MERGE_COMMITS=$(git log --merges --oneline @{upstream}..HEAD 2>/dev/null)
+        if [ -n "$MERGE_COMMITS" ]; then
+          echo "❌ Merge commits detected — use rebase instead:"
+          echo "$MERGE_COMMITS"
+          exit 1
+        fi
+
+    python-test:
+      root: packages/python/
+      run: uv run pytest -q
+
+    ts-test:
+      root: packages/typescript/
+      run: bun test
 ```
 
 ### packages/typescript/tsconfig.json
@@ -208,7 +274,7 @@ _What's preventing progress or what must be completed first._
 }
 ```
 
-### GitHub Actions CI
+### GitHub Actions CI (Polyglot)
 ```yaml
 name: CI
 
@@ -219,38 +285,31 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  python:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        runtime: [bun, node]
+    defaults:
+      run:
+        working-directory: packages/python
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest --cov
 
-      - name: Setup Bun
-        if: matrix.runtime == 'bun'
-        uses: oven-sh/setup-bun@v1
-
-      - name: Setup Node.js
-        if: matrix.runtime == 'node'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Lint
-        run: bun run lint
-
-      - name: Type check
-        run: bun run typecheck
-
-      - name: Test
-        run: bun run test:coverage
-
-      - name: Build
-        run: bun run build
+  typescript:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: cd ../.. && bun install
+      - run: bunx tsc --noEmit
+      - run: bun test
+      - run: bun run build
 ```
 
 ---
@@ -259,36 +318,48 @@ jobs:
 _How to confirm this task is complete._
 
 ```bash
-# Clone fresh and verify
-cd /tmp && git clone <repo>
-cd mcp-refcache-ts
+# From repo root on feat/monorepo-restructure branch
 
-# Install dependencies
+# 1. Install dependencies (both ecosystems)
 bun install
+cd packages/python && uv sync && cd ../..
 
-# All checks pass
-bun run lint
-bun run typecheck
-bun run test
-bun run build
+# 2. TypeScript checks pass
+cd packages/typescript
+bunx tsc --noEmit        # Type-check
+bun test                 # Tests pass
+bun run build            # Build succeeds
+ls -la dist/             # index.js, index.d.ts exist
+cd ../..
 
-# Verify with Node.js
-node --version  # Should be 20+
-npx vitest run  # Tests pass in Node.js too
+# 3. Python still works
+bun run test:py          # Python tests still pass
 
-# Check package exports
-cd packages/mcp-refcache
-bun run build
-ls -la dist/  # index.js, index.d.ts exist
+# 4. Root scripts work
+bun run test             # Runs both TS + Python tests
+bun run lint             # Lints both ecosystems
+
+# 5. Lefthook installed
+bunx lefthook run pre-commit  # Runs lint hooks
+bunx lefthook run pre-push    # Runs test hooks
+
+# 6. Smoke test: import works
+echo 'import { version } from "mcp-refcache"; console.log(version);' | bun run -
 ```
 
 ---
 
 ## Related
 - **Parent Goal:** [06-TypeScript-RefCache](../scratchpad.md)
-- **Depends On:** [Task-00: Monorepo Migration](../Task-00/scratchpad.md)
+- **Depends On:** [Task-00: Monorepo Migration](../Task-00/scratchpad.md) ✅
 - **Blocks:** All subsequent tasks (Task-02 through Task-10)
+- **Reference Files:** `.agent/references/fractal-agents-runtime/` (see README there)
+  - `ts-app-package.json` — TypeScript app package.json pattern
+  - `ts-app-tsconfig.json` — TypeScript strict config
+  - `lefthook.yml` — Polyglot git hooks
+  - `ts-src-examples/storage.test.ts` — `bun test` patterns
 - **External Links:**
   - [Bun Workspaces](https://bun.sh/docs/install/workspaces)
-  - [Vitest](https://vitest.dev/)
+  - [bun test](https://bun.sh/docs/cli/test) — Built-in test runner
+  - [Lefthook](https://github.com/evilmartians/lefthook) — Polyglot git hooks
   - [TypeScript Strict Mode](https://www.typescriptlang.org/tsconfig#strict)

@@ -1,0 +1,23 @@
+{
+  "name": "fractal-agents-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "postinstall": "lefthook install",
+    "check:bun-version": "./scripts/check-bun-version.sh",
+    "dev:python": "cd apps/python && uv run python -m robyn_server",
+    "dev:ts": "cd apps/ts && bun run dev",
+    "test:python": "cd apps/python && uv run pytest",
+    "test:ts": "cd apps/ts && bun test",
+    "lint:python": "cd apps/python && uv run ruff check . && uv run ruff format --check .",
+    "format:python": "cd apps/python && uv run ruff check --fix --unsafe-fixes . && uv run ruff format ."
+  },
+  "devDependencies": {
+    "lefthook": "^2.1.0"
+  }
+}

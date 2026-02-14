@@ -1,0 +1,130 @@
+[project]
+name = "fractal-agents-runtime"
+version = "0.0.2"
+description = "Free, self-hostable LangGraph agent runtime with MCP tools, RAG, and A2A protocol"
+authors = [
+    { name = "l4b4r4b4b4" },
+]
+requires-python = ">=3.11.0,<3.13"
+dependencies = [
+    # Server framework
+    "robyn>=0.76.0",
+    # Postgres persistence (server-managed pool, checkpointer, store)
+    "langgraph-checkpoint-postgres>=3.0.4",
+    "psycopg[binary,pool]>=3.2.0",
+    # Scheduling
+    "apscheduler>=3.11.2",
+    "croniter>=6.0.0",
+    # LLM providers
+    "langchain-anthropic>=1.3.3",
+    "langchain-openai>=1.1.9",
+    "deepagents>=0.3.9",
+    "tavily-python>=0.7.20",
+    # LangGraph / LangChain core
+    "langgraph>=1.0.8",
+    "langchain-core>=1.2.11",
+    "langchain>=1.2.10",
+    # MCP tool integration
+    "langchain-mcp-adapters>=0.2.1",
+    "mcp>=1.9.1",
+    # Tracing
+    "langfuse>=3.14.1",
+    # Auth
+    "supabase>=2.15.1",
+    # Data / HTTP
+    "pydantic>=2.11.0,<3",
+    "aiohttp>=3.8.0",
+]
+
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["server*", "graphs*", "infra*"]
+exclude = ["server.tests*", "server.helm*"]
+
+[dependency-groups]
+dev = [
+    "coverage-threshold>=0.6.2",
+    "diff-cover>=10.2.0",
+    "pytest>=8.0",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.8.4",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["src/server/tests", "tests"]
+norecursedirs = ["archive", ".agent", ".venv", "__pycache__"]
+
+[tool.coverage.run]
+source = ["server", "graphs", "infra"]
+omit = ["*/tests/*", "*/helm/*"]
+
+[tool.coverage.report]
+fail_under = 73
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
+    "raise NotImplementedError",
+]
+
+[tool.coverage.json]
+output = "coverage.json"
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+# ---------------------------------------------------------------------------
+# coverage-threshold — per-file coverage floor
+# Runs after: pytest --cov --cov-report=json && coverage-threshold
+# ---------------------------------------------------------------------------
+[tool.coverage-threshold]
+line_coverage_min = 73           # global average (matches pytest-cov fail_under)
+file_line_coverage_min = 10      # absolute floor — no file at 0%
+
+# Integration-heavy modules that legitimately need external services to test
+# further.  Ratchet these up as coverage improves.
+[tool.coverage-threshold.modules."src/graphs/react_agent/utils/tools.py"]
+file_line_coverage_min = 10      # requires live MCP servers
+
+[tool.coverage-threshold.modules."src/graphs/react_agent/utils/token.py"]
+file_line_coverage_min = 10      # requires HTTP token exchange
+
+[tool.coverage-threshold.modules."src/graphs/react_agent/utils/mcp_interceptors.py"]
+file_line_coverage_min = 20      # MCP interceptor wiring
+
+[tool.coverage-threshold.modules."src/server/routes/a2a.py"]
+file_line_coverage_min = 20      # A2A JSON-RPC protocol
+
+[tool.coverage-threshold.modules."src/server/routes/streams.py"]
+file_line_coverage_min = 30      # SSE streaming — hard to unit-test
+
+# ---------------------------------------------------------------------------
+# diff-cover — enforce coverage on new/changed lines in PRs
+# Runs after: pytest --cov --cov-report=xml && diff-cover coverage.xml ...
+# ---------------------------------------------------------------------------
+[tool.diff_cover]
+compare_branch = "origin/development"
+fail_under = 80                  # new/changed code must be ≥80% covered
+
+[tool.ruff]
+src = ["src"]
+exclude = [
+    ".agent",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# logging.basicConfig() MUST run before any library import so all loggers
+# inherit the configured level. This intentionally violates E402.
+"src/server/app.py" = ["E402"]

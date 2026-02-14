@@ -38,7 +38,7 @@
 | 02 | [Faster-MCP](./goals/02-Faster-MCP/scratchpad.md) | ⚪ Not Started | P3 (Low) |
 | 04 | [Async-Task-Backends](./goals/04-Async-Timeout-Fallback/scratchpad.md) | 🟢 Tasks 01-05, 09 Done | P1 (High) |
 | 05 | [Real-Estate-Sustainability-MCP](./goals/05-Real-Estate-Sustainability-MCP/scratchpad.md) | 🔴 Not Started | P1 (High) |
-| 06 | [TypeScript-RefCache](./goals/06-TypeScript-RefCache/scratchpad.md) | ⚪ Not Started | P1 (High) |
+| 06 | [TypeScript-RefCache](./goals/06-TypeScript-RefCache/scratchpad.md) | 🟡 In Progress | P1 (High) |
 
 See [Goals Index](./goals/scratchpad.md) for full tracking.
 
@@ -50,7 +50,46 @@ See [Goals Index](./goals/scratchpad.md) for full tracking.
 
 **04-Async-Task-Backends**: Add async task execution to `@cache.cached()` with pluggable backends. `TaskBackend` protocol enables `MemoryTaskBackend` (ThreadPoolExecutor, MVP) and future `HatchetTaskBackend` (distributed). When computations exceed `async_timeout`, returns reference immediately with "processing" status. Client polls for completion. **Tasks 01-05, 09 complete. 718 tests passing.** Next: Create minimal MCP server example, test in Zed, then release v0.2.0.
 
-**06-TypeScript-RefCache**: Restructure repo into **Bun+Python monorepo** housing both implementations. Port `mcp-refcache` to TypeScript for Node.js MCP ecosystem. Target FastMCP (TypeScript) by @punkpeye. Full feature parity: RefCache, backends (Memory/SQLite/Redis), access control, preview system, async tasks. Plus companion `fastmcp-ts-template`. **11 tasks defined (Task-00 through Task-10), monorepo reference files collected.**
+**06-TypeScript-RefCache**: Restructure repo into **Bun+Python monorepo** housing both implementations. Port `mcp-refcache` to TypeScript for Node.js MCP ecosystem. Target FastMCP (TypeScript) by @punkpeye. Full feature parity: RefCache, backends (Memory/SQLite/Redis), access control, preview system, async tasks. Plus companion `fastmcp-ts-template` (port of Python template). **Task-00 complete (monorepo migration). Task-01 next (TS package setup, `bun test`, lefthook).** Primary reference: `fractal-agents-runtime` (`.agent/references/fractal-agents-runtime/`). Branch: `feat/monorepo-restructure`.
+
+---
+
+## Session Log (2025-07-16)
+
+### Completed This Session
+1. **Goal 06: TypeScript-RefCache** — Major update with new primary reference
+   - Switched primary reference from `docproc-platform` to `fractal-agents-runtime`
+   - Copied 15+ reference files to `.agent/references/fractal-agents-runtime/`
+   - Created detailed README explaining file inventory and how each maps to mcp-refcache tasks
+   - Added Python ↔ TypeScript module mapping table (every Python file → planned TS counterpart)
+
+2. **Key Decisions Updated**
+   - `bun test` replaces Vitest (zero-dep, built-in Jest-compatible runner, confirmed by fractal-agents-runtime)
+   - Lefthook replaces `.pre-commit-config.yaml` (polyglot git hooks, Go binary, parallel execution)
+   - `js-tiktoken` replaces native `tiktoken` (WASM, no native compilation, works in Bun + Node.js)
+   - `fractal-agents-runtime` as primary reference (same author, same Bun+Python+Nix pattern)
+   - No ESLint for v0.1.0 — TypeScript strict mode + `tsc --noEmit` sufficient (same as fractal-agents-runtime)
+
+3. **Goal & Task Scratchpad Updates**
+   - Updated Goal 06 scratchpad: status 🟡, references, decisions, module mapping, approach refinements
+   - Updated Task-01 scratchpad: `bun test`, lefthook setup, updated CI workflow, removed Vitest/ESLint deps
+   - Updated goals index: Goal 06 status → 🟡 In Progress, summary with fractal-agents-runtime reference
+   - All work on `feat/monorepo-restructure` branch
+
+4. **Reference Files Copied** (`.agent/references/fractal-agents-runtime/`)
+   - Root config: `root-package.json`, `flake.nix`, `lefthook.yml`, `gitignore`, `rules`, `CONTRIBUTING.md`
+   - TS app: `ts-app-package.json`, `ts-app-tsconfig.json`
+   - Python app: `python-app-pyproject.toml`
+   - TS source examples: `config.ts`, `storage-types.ts`, `storage-memory.ts`, `errors.ts`, `index.ts`
+   - TS test examples: `storage.test.ts`, `auth.test.ts`
+
+### Files Created/Modified
+- `.agent/references/fractal-agents-runtime/README.md` — Reference file inventory & usage guide
+- `.agent/references/fractal-agents-runtime/*.{json,yml,nix,ts,toml,md}` — 15+ reference files
+- `.agent/goals/06-TypeScript-RefCache/scratchpad.md` — Updated goal (references, decisions, module map)
+- `.agent/goals/06-TypeScript-RefCache/Task-01/scratchpad.md` — Updated task (bun test, lefthook, CI)
+- `.agent/goals/scratchpad.md` — Updated index (status, summary, recent activity)
+- `.agent/scratchpad.md` — This file (session log, handoff)
 
 ---
 
@@ -119,56 +158,43 @@ See [Goals Index](./goals/scratchpad.md) for full tracking.
 ## Next Session Handoff
 
 ````
-Goal 06: TypeScript-RefCache — Task-00 Monorepo Migration
+Goal 06: TypeScript-RefCache — Task-01 Project Setup & Tooling
 
 ## Context
-- Goal 06 created with 11 detailed tasks for porting mcp-refcache to TypeScript
-- Decision: Convert existing repo to Bun+Python monorepo (not separate repo)
-- Reference files from docproc-platform copied to `archive/bun-python-monorepo-reference/`
+- Goal 06: 11 tasks for porting mcp-refcache to TypeScript/Bun (polyglot monorepo)
+- Task-00 (Monorepo Migration) ✅ complete — Python in packages/python/, root package.json + tsconfig.json + flake.nix ready
+- Branch: `feat/monorepo-restructure` (already checked out)
+- Primary reference: `.agent/references/fractal-agents-runtime/` (see README there)
 - See `.agent/goals/06-TypeScript-RefCache/scratchpad.md` for full goal details
 
-## What Was Done (Planning Session)
-- Researched FastMCP (TypeScript), @modelcontextprotocol/sdk, Bun ecosystem
-- Created 11 task scratchpads with detailed implementation designs
-- Collected monorepo reference files from docproc-platform
-- Documented architecture: packages/python/ + packages/typescript/
+## What Was Done
+- Copied fractal-agents-runtime reference files (15+ files) to `.agent/references/`
+- Updated Goal 06: module mapping table, `bun test` over Vitest, Lefthook over pre-commit, `js-tiktoken`
+- Updated Task-01 scratchpad with full lefthook.yml, CI workflow, package.json specs
+- All goal/task scratchpads and indexes updated
 
-## Current Task: Task-00 Monorepo Migration
-Start by restructuring the repo:
-
-1. Create feature branch:
-   ```bash
-   git checkout -b feat/monorepo-restructure
-   ```
-
-2. Move Python code to packages/python/:
-   ```bash
-   mkdir -p packages/python
-   git mv src packages/python/
-   git mv tests packages/python/
-   git mv pyproject.toml packages/python/
-   git mv uv.lock packages/python/
-   ```
-
-3. Create root package.json with Bun workspaces
-
-4. Update flake.nix to support both Bun and Python
-
-5. Verify Python tests still pass:
-   ```bash
-   cd packages/python && uv sync && uv run pytest
-   ```
+## Current Task: Task-01 — TS Package Setup & Tooling
+1. Create `packages/typescript/` with `src/index.ts`, `tests/index.test.ts`
+2. Create `packages/typescript/package.json` (see Task-01 scratchpad for exact spec)
+3. Create `packages/typescript/tsconfig.json` (extends root)
+4. `bun install` from root to link workspace
+5. Install lefthook: `bun add -D lefthook`, create `lefthook.yml` at root
+6. Update root `package.json` scripts (postinstall: lefthook install)
+7. Create `.github/workflows/ci.yml` (polyglot: Python + TypeScript jobs)
+8. Verify: `bun test`, `bunx tsc --noEmit`, `bun run test:py` all pass
 
 ## Key Files
 - Goal: `.agent/goals/06-TypeScript-RefCache/scratchpad.md`
-- Task-00: `.agent/goals/06-TypeScript-RefCache/Task-00/scratchpad.md`
-- Reference: `archive/bun-python-monorepo-reference/`
+- Task-01: `.agent/goals/06-TypeScript-RefCache/Task-01/scratchpad.md`
+- Reference: `.agent/references/fractal-agents-runtime/` (especially lefthook.yml, ts-app-package.json)
 
 ## Guidelines
 - Follow `.rules` (TDD, document as you go)
 - Don't break existing Python functionality
-- Run: `cd packages/python && uv run pytest` after each change
-- Reference docproc-platform pattern in archive/
+- Use `bun test` (built-in), NOT Vitest
+- Use Lefthook for git hooks, NOT pre-commit
+- No ESLint for v0.1.0 — `tsc --noEmit` is sufficient
+- Run: `cd packages/python && uv run pytest` after any structural changes
 ````
 
 ---
