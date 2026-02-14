@@ -106,9 +106,8 @@ export type {
 } from "./models/index.js";
 
 // ── Backends ─────────────────────────────────────────────────────────
-// TODO(Task-03): Export backend interfaces and implementations
-// export type { CacheBackend } from "./backends/types.js";
-// export { MemoryBackend } from "./backends/memory.js";
+export type { CacheBackend } from "./backends/index.js";
+export { MemoryBackend } from "./backends/index.js";
 
 // TODO(Task-07): SQLite and Redis backends
 // export { SQLiteBackend } from "./backends/sqlite.js";

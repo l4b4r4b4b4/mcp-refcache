@@ -50,7 +50,37 @@ See [Goals Index](./goals/scratchpad.md) for full tracking.
 
 **04-Async-Task-Backends**: Add async task execution to `@cache.cached()` with pluggable backends. `TaskBackend` protocol enables `MemoryTaskBackend` (ThreadPoolExecutor, MVP) and future `HatchetTaskBackend` (distributed). When computations exceed `async_timeout`, returns reference immediately with "processing" status. Client polls for completion. **Tasks 01-05, 09 complete. 718 tests passing.** Next: Create minimal MCP server example, test in Zed, then release v0.2.0.
 
-**06-TypeScript-RefCache**: Restructure repo into **Bun+Python monorepo** housing both implementations. Port `mcp-refcache` to TypeScript for Node.js MCP ecosystem. Target FastMCP (TypeScript) by @punkpeye. Full feature parity: RefCache, backends (Memory/SQLite/Redis), access control, preview system, async tasks. Plus companion `fastmcp-ts-template` (port of Python template). **Tasks 00–02 complete. Task-03 next (Backend Protocol & MemoryBackend).** 113 TS tests passing (36ms). Primary reference: `fractal-agents-runtime` (`.agent/references/fractal-agents-runtime/`). Branch: `feat/monorepo-restructure`.
+**06-TypeScript-RefCache**: Restructure repo into **Bun+Python monorepo** housing both implementations. Port `mcp-refcache` to TypeScript for Node.js MCP ecosystem. Target FastMCP (TypeScript) by @punkpeye. Full feature parity: RefCache, backends (Memory/SQLite/Redis), access control, preview system, async tasks. Plus companion `fastmcp-ts-template` (port of Python template). **Tasks 00–03 complete. Task-04 next (RefCache core).** 171 TS tests passing (61ms). Primary reference: `fractal-agents-runtime` (`.agent/references/fractal-agents-runtime/`). Branch: `feat/monorepo-restructure`.
+
+---
+
+## Session Log (2025-07-17)
+
+### Completed This Session
+
+1. **Task-03: Backend Protocol & MemoryBackend** ✅
+   - Created `CacheBackend` interface (`src/backends/types.ts`) — direct port of Python's `CacheBackend` protocol
+     - 6 methods: `get`, `set`, `delete`, `exists`, `clear`, `keys`
+     - Synchronous (not async) — `MemoryBackend` has no I/O, no need for `Promise` wrapping
+   - Created `MemoryBackend` class (`src/backends/memory.ts`) — `Map<string, CacheEntry>` with lazy TTL eviction
+     - Reuses `CacheEntry` and `isExpired()` from Task-02's `src/models/cache.ts`
+     - No locking needed (JS is single-threaded, unlike Python's `threading.RLock`)
+     - No LRU, no background timer, no `close()` — matching Python source exactly
+   - Created barrel (`src/backends/index.ts`) and updated `src/index.ts` with real exports
+   - Wrote 58 comprehensive tests (`tests/backends.test.ts`, 834 lines, 124 assertions):
+     - CacheEntry model tests (7), protocol compliance (2), basic CRUD (14)
+     - TTL expiration (7), namespace-scoped clear (5), namespace-scoped keys (7)
+     - Interface contract tests (7, extensible for future backends), edge cases (9)
+   - **Total: 171 TS tests passing (61ms), 718 Python tests still passing**
+
+### Files Created
+- `packages/typescript/src/backends/types.ts` — `CacheBackend` interface (109 lines)
+- `packages/typescript/src/backends/memory.ts` — `MemoryBackend` class (187 lines)
+- `packages/typescript/src/backends/index.ts` — barrel (11 lines)
+- `packages/typescript/tests/backends.test.ts` — 58 tests (834 lines)
+
+### Files Modified
+- `packages/typescript/src/index.ts` — replaced backend TODO comments with real exports
 
 ---
 
