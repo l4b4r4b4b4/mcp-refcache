@@ -4,7 +4,7 @@
 - [ ] Not Started
 - [ ] In Progress
 - [ ] Blocked
-- [ ] Complete
+- [x] Complete ✅ (2025-07-16)
 
 ## Objective
 Define all data models and Zod schemas that form the type foundation for `mcp-refcache-ts`. This includes cache references, responses, preview configurations, task status, and access control types.
@@ -15,14 +15,14 @@ Define all data models and Zod schemas that form the type foundation for `mcp-re
 The Python implementation uses Pydantic models for data validation and serialization. In TypeScript, Zod provides equivalent functionality with excellent type inference. These schemas will be used throughout the library for runtime validation while providing static type safety.
 
 ## Acceptance Criteria
-- [ ] All cache-related schemas defined (`CacheReference`, `CacheResponse`, `CacheEntry`)
-- [ ] Preview schemas defined (`PreviewConfig`, `PreviewStrategy`, `SizeMode`)
-- [ ] Pagination schemas defined (`PaginatedResponse`)
-- [ ] Async task schemas defined (`AsyncTaskResponse`, `TaskInfo`, `TaskStatus`, `TaskProgress`)
-- [ ] Access control schemas defined (`Permission`, `AccessPolicy`, `ActorType`)
-- [ ] All schemas export inferred TypeScript types
-- [ ] Unit tests for schema validation
-- [ ] JSDoc documentation for all exports
+- [x] All cache-related schemas defined (`CacheReference`, `CacheResponse`, `CacheEntry`)
+- [x] Preview schemas defined (`PreviewConfig`, `PreviewResult`, `PreviewStrategy`, `SizeMode`)
+- [x] Pagination schemas defined (`PaginatedResponse`) + `paginateList()` factory
+- [x] Async task schemas defined (`AsyncTaskResponse`, `TaskInfo`, `TaskStatus`, `TaskProgress`, `RetryInfo`, `ExpectedSchema`)
+- [x] Access control schemas defined (`Permission` bitfield, `AccessPolicy`, `ActorType`) + policy presets
+- [x] All schemas export inferred TypeScript types via barrel `index.ts`
+- [x] Unit tests for schema validation (110 tests, all passing)
+- [x] JSDoc documentation for all exports
 
 ---
 
@@ -105,6 +105,21 @@ _Running log of findings, decisions, and observations._
 | Date | Summary |
 |------|---------|
 | 2025-01-30 | Task created with schema mapping |
+| 2025-07-16 | **Completed**: All models ported, 110 tests passing, committed as `9e3f049` |
+
+### Key Decisions Made During Implementation
+
+1. **`z.output` vs `z.infer` for TaskProgress**: Used `z.output` for the `TaskProgress` type because the schema has a `.transform()` step (auto-calculating percentage). `z.input` is also exported as `TaskProgressInput` for constructing values before parsing.
+
+2. **`nullish()` over `nullable()`**: Used `z.nullish()` (accepts `null | undefined`) with `.default(null)` for optional fields to match Python's `Optional[X] = None` pattern. This is more forgiving for callers while still normalizing to `null` after parsing.
+
+3. **Permission as `as const` object, not TypeScript enum**: TypeScript enums have quirks (reverse mappings, nominal typing). A `const` object with bitfield numbers is simpler, works with bitwise operators directly, and matches the fractal-agents-runtime pattern.
+
+4. **Policy presets parsed through schema**: `POLICY_PUBLIC` etc. are created via `AccessPolicySchema.parse({...})` rather than plain objects, ensuring they're validated and have all defaults applied.
+
+5. **`asyncTaskResponseToDict` uses snake_case keys**: The dict output uses Python-convention `snake_case` keys (`ref_id`, `is_async`, `eta_seconds`) for interoperability with the Python implementation's `to_dict()` output.
+
+6. **PreviewResult included in preview.ts**: Even though Python has `PreviewResult` in `preview.py` (not `models.py`), it's closely tied to `PreviewConfig` and benefits from being co-located with the preview schemas.
 
 ---
 
@@ -113,7 +128,7 @@ _What's preventing progress or what must be completed first._
 
 | Blocker/Dependency | Status | Resolution |
 |--------------------|--------|------------|
-| Task-01: Project Setup | Required | Project must be initialized first |
+| Task-01: Project Setup | ✅ Complete | Project initialized, `bun test` working |
 
 ---
 
@@ -238,44 +253,49 @@ _How to confirm this task is complete._
 
 ```bash
 # Run model tests
-bun test tests/models/
+cd packages/typescript && bun test
 
 # Verify type inference
-bun run typecheck
+bunx tsc --noEmit
 
-# Check exports
-import { CacheReference, PreviewConfig, Permission } from 'mcp-refcache';
+# Build
+bun run build
 ```
 
-### Test Examples
-```typescript
-// tests/models/cache.test.ts
-import { describe, expect, it } from 'vitest';
-import { CacheReferenceSchema } from '../../src/models/cache';
+### Verification Results (2025-07-16)
 
-describe('CacheReferenceSchema', () => {
-  it('validates valid reference', () => {
-    const result = CacheReferenceSchema.parse({
-      refId: 'abc123',
-      key: 'user_data',
-    });
-    expect(result.refId).toBe('abc123');
-    expect(result.namespace).toBe('public'); // default
-  });
+| Check | Result | Details |
+|-------|--------|---------|
+| `bunx tsc --noEmit` | ✅ | Clean (0 errors) |
+| `bun test` | ✅ | 113 pass (3 index + 110 models), 0 fail, 36ms |
+| `bun run build` | ✅ | `dist/` with all `.js`, `.d.ts`, source maps |
+| Lefthook pre-commit | ✅ | `ts-typecheck` passed (0.96s) |
 
-  it('rejects empty refId', () => {
-    expect(() => CacheReferenceSchema.parse({ refId: '', key: 'k' }))
-      .toThrow();
-  });
-});
-```
+Commit: `9e3f049` on `feat/monorepo-restructure`
+
+### Files Created
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `src/models/enums.ts` | 140 | SizeMode, PreviewStrategy, AsyncResponseFormat, TaskStatus, ActorType |
+| `src/models/permissions.ts` | 310 | Permission bitfield, AccessPolicy, presets, helpers |
+| `src/models/preview.ts` | 152 | PreviewConfig, PreviewResult |
+| `src/models/cache.ts` | 424 | CacheReference, CacheResponse, PaginatedResponse, CacheEntry, helpers |
+| `src/models/task.ts` | 544 | TaskProgress, RetryInfo, ExpectedSchema, TaskInfo, AsyncTaskResponse, factories |
+| `src/models/index.ts` | 92 | Barrel re-exports |
+| `tests/models.test.ts` | 1217 | 110 tests covering all schemas |
 
 ---
 
 ## Related
 - **Parent Goal:** [06-TypeScript-RefCache](../scratchpad.md)
-- **Depends On:** [Task-01: Project Setup](../Task-01/scratchpad.md)
+- **Depends On:** [Task-01: Project Setup](../Task-01/scratchpad.md) ✅
 - **Blocks:** Task-03, Task-04, Task-05, Task-06
+- **Reference Files:** `.agent/references/fractal-agents-runtime/ts-src-examples/config.ts` (Zod pattern)
+- **Python Source Files:**
+  - `packages/python/src/mcp_refcache/models.py` — CacheReference, CacheResponse, PaginatedResponse, PreviewConfig, TaskProgress, TaskInfo, AsyncTaskResponse, ExpectedSchema, RetryInfo
+  - `packages/python/src/mcp_refcache/permissions.py` — Permission (Flag enum), AccessPolicy, policy presets
+  - `packages/python/src/mcp_refcache/preview.py` — PreviewResult
+  - `packages/python/src/mcp_refcache/backends/base.py` — CacheEntry
 - **External Links:**
   - [Zod Documentation](https://zod.dev)
-  - [Python mcp-refcache models.py](https://github.com/l4b4r4b4b4/mcp-refcache/blob/main/src/mcp_refcache/models.py)

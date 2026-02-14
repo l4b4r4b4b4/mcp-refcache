@@ -50,46 +50,57 @@ See [Goals Index](./goals/scratchpad.md) for full tracking.
 
 **04-Async-Task-Backends**: Add async task execution to `@cache.cached()` with pluggable backends. `TaskBackend` protocol enables `MemoryTaskBackend` (ThreadPoolExecutor, MVP) and future `HatchetTaskBackend` (distributed). When computations exceed `async_timeout`, returns reference immediately with "processing" status. Client polls for completion. **Tasks 01-05, 09 complete. 718 tests passing.** Next: Create minimal MCP server example, test in Zed, then release v0.2.0.
 
-**06-TypeScript-RefCache**: Restructure repo into **Bun+Python monorepo** housing both implementations. Port `mcp-refcache` to TypeScript for Node.js MCP ecosystem. Target FastMCP (TypeScript) by @punkpeye. Full feature parity: RefCache, backends (Memory/SQLite/Redis), access control, preview system, async tasks. Plus companion `fastmcp-ts-template` (port of Python template). **Task-00 complete (monorepo migration). Task-01 next (TS package setup, `bun test`, lefthook).** Primary reference: `fractal-agents-runtime` (`.agent/references/fractal-agents-runtime/`). Branch: `feat/monorepo-restructure`.
+**06-TypeScript-RefCache**: Restructure repo into **Bun+Python monorepo** housing both implementations. Port `mcp-refcache` to TypeScript for Node.js MCP ecosystem. Target FastMCP (TypeScript) by @punkpeye. Full feature parity: RefCache, backends (Memory/SQLite/Redis), access control, preview system, async tasks. Plus companion `fastmcp-ts-template` (port of Python template). **Tasks 00–02 complete. Task-03 next (Backend Protocol & MemoryBackend).** 113 TS tests passing (36ms). Primary reference: `fractal-agents-runtime` (`.agent/references/fractal-agents-runtime/`). Branch: `feat/monorepo-restructure`.
 
 ---
 
 ## Session Log (2025-07-16)
 
 ### Completed This Session
-1. **Goal 06: TypeScript-RefCache** — Major update with new primary reference
-   - Switched primary reference from `docproc-platform` to `fractal-agents-runtime`
+
+1. **Goal 06 Reference Update** — Switched primary reference to `fractal-agents-runtime`
    - Copied 15+ reference files to `.agent/references/fractal-agents-runtime/`
-   - Created detailed README explaining file inventory and how each maps to mcp-refcache tasks
-   - Added Python ↔ TypeScript module mapping table (every Python file → planned TS counterpart)
+   - Created README with file inventory and mapping to each task
+   - Added Python ↔ TypeScript module mapping table to goal scratchpad
+   - Key decisions: `bun test` over Vitest, Lefthook over pre-commit, `js-tiktoken`
 
-2. **Key Decisions Updated**
-   - `bun test` replaces Vitest (zero-dep, built-in Jest-compatible runner, confirmed by fractal-agents-runtime)
-   - Lefthook replaces `.pre-commit-config.yaml` (polyglot git hooks, Go binary, parallel execution)
-   - `js-tiktoken` replaces native `tiktoken` (WASM, no native compilation, works in Bun + Node.js)
-   - `fractal-agents-runtime` as primary reference (same author, same Bun+Python+Nix pattern)
-   - No ESLint for v0.1.0 — TypeScript strict mode + `tsc --noEmit` sufficient (same as fractal-agents-runtime)
+2. **Task-01: Project Setup & Tooling** ✅
+   - Created `packages/typescript/` with `package.json`, `tsconfig.json`, `src/index.ts`
+   - `bun test`: 3 smoke tests passing (VERSION export, semver, package.json sync)
+   - `tsc` build: `dist/index.js` + `dist/index.d.ts` + source maps
+   - Lefthook installed: polyglot pre-commit (Python lint + TS typecheck) and pre-push (tests + reject merge commits)
+   - GitHub Actions CI: added `test-typescript` job alongside existing Python jobs
+   - Root `package.json`: `postinstall: lefthook install`, all cross-ecosystem scripts working
+   - Commit: `a3fb939`
 
-3. **Goal & Task Scratchpad Updates**
-   - Updated Goal 06 scratchpad: status 🟡, references, decisions, module mapping, approach refinements
-   - Updated Task-01 scratchpad: `bun test`, lefthook setup, updated CI workflow, removed Vitest/ESLint deps
-   - Updated goals index: Goal 06 status → 🟡 In Progress, summary with fractal-agents-runtime reference
-   - All work on `feat/monorepo-restructure` branch
+3. **Task-02: Models & Zod Schemas** ✅
+   - Ported ALL Python Pydantic models to Zod schemas (6 files, ~1600 lines of source):
+     - `enums.ts`: SizeMode, PreviewStrategy, AsyncResponseFormat, TaskStatus, ActorType
+     - `permissions.ts`: Permission bitfield (exact Python `auto()` values), AccessPolicy, 4 policy presets, `hasPermission`/`combinePermissions`/`userCan`/`agentCan` helpers
+     - `preview.ts`: PreviewConfig, PreviewResult
+     - `cache.ts`: CacheReference, CacheResponse, PaginatedResponse, CacheEntry, `paginateList()`, `isExpired()`
+     - `task.ts`: TaskProgress (with auto-percentage `.transform()`), RetryInfo, ExpectedSchema, TaskInfo, AsyncTaskResponse, `asyncTaskResponseFromInfo()`, `asyncTaskResponseToDict()`, `canRetry()`, `isTerminal()`, `elapsedSeconds()`
+     - `index.ts`: barrel re-exporting all schemas, types, and helpers
+   - 110 new tests (1217 lines) covering every schema, helper, edge case, and Python parity check
+   - `src/index.ts` updated: real model re-exports replace TODO comments
+   - **Total: 113 tests passing, 0 failures, 36ms**
+   - Commit: `9e3f049`
 
-4. **Reference Files Copied** (`.agent/references/fractal-agents-runtime/`)
-   - Root config: `root-package.json`, `flake.nix`, `lefthook.yml`, `gitignore`, `rules`, `CONTRIBUTING.md`
-   - TS app: `ts-app-package.json`, `ts-app-tsconfig.json`
-   - Python app: `python-app-pyproject.toml`
-   - TS source examples: `config.ts`, `storage-types.ts`, `storage-memory.ts`, `errors.ts`, `index.ts`
-   - TS test examples: `storage.test.ts`, `auth.test.ts`
-
-### Files Created/Modified
-- `.agent/references/fractal-agents-runtime/README.md` — Reference file inventory & usage guide
-- `.agent/references/fractal-agents-runtime/*.{json,yml,nix,ts,toml,md}` — 15+ reference files
-- `.agent/goals/06-TypeScript-RefCache/scratchpad.md` — Updated goal (references, decisions, module map)
-- `.agent/goals/06-TypeScript-RefCache/Task-01/scratchpad.md` — Updated task (bun test, lefthook, CI)
-- `.agent/goals/scratchpad.md` — Updated index (status, summary, recent activity)
-- `.agent/scratchpad.md` — This file (session log, handoff)
+### Files Created
+- `packages/typescript/package.json` — npm library config
+- `packages/typescript/tsconfig.json` — extends root, declarations
+- `packages/typescript/src/index.ts` — barrel with VERSION + model re-exports
+- `packages/typescript/src/models/enums.ts` — 5 enum schemas
+- `packages/typescript/src/models/permissions.ts` — Permission bitfield + AccessPolicy
+- `packages/typescript/src/models/preview.ts` — PreviewConfig + PreviewResult
+- `packages/typescript/src/models/cache.ts` — CacheReference/Response/Entry + helpers
+- `packages/typescript/src/models/task.ts` — TaskProgress/Info/AsyncResponse + factories
+- `packages/typescript/src/models/index.ts` — barrel
+- `packages/typescript/tests/index.test.ts` — 3 smoke tests
+- `packages/typescript/tests/models.test.ts` — 110 model tests
+- `packages/typescript/LICENSE`, `README.md`, `.gitignore`
+- `lefthook.yml` — polyglot git hooks
+- `.agent/references/fractal-agents-runtime/` — 15+ reference files + README
 
 ---
 
@@ -158,48 +169,63 @@ See [Goals Index](./goals/scratchpad.md) for full tracking.
 ## Next Session Handoff
 
 ````
-Goal 06: TypeScript-RefCache — Task-01 Project Setup & Tooling
+Goal 06: TypeScript-RefCache — Task-03 Backend Protocol & MemoryBackend
 
 ## Context
-- Goal 06: 11 tasks for porting mcp-refcache to TypeScript/Bun (polyglot monorepo)
-- Task-00 (Monorepo Migration) ✅ complete — Python in packages/python/, root package.json + tsconfig.json + flake.nix ready
+- Goal 06: Porting mcp-refcache to TypeScript/Bun (polyglot monorepo)
+- Tasks 00–02 complete. 113 TS tests passing (36ms). 718 Python tests passing.
 - Branch: `feat/monorepo-restructure` (already checked out)
-- Primary reference: `.agent/references/fractal-agents-runtime/` (see README there)
 - See `.agent/goals/06-TypeScript-RefCache/scratchpad.md` for full goal details
+- See `.agent/scratchpad.md` for session log with all commits
 
-## What Was Done
-- Copied fractal-agents-runtime reference files (15+ files) to `.agent/references/`
-- Updated Goal 06: module mapping table, `bun test` over Vitest, Lefthook over pre-commit, `js-tiktoken`
-- Updated Task-01 scratchpad with full lefthook.yml, CI workflow, package.json specs
-- All goal/task scratchpads and indexes updated
+## What Was Done (Previous Session)
+- Task-01 ✅: `packages/typescript/` scaffolded, `bun test`, lefthook, CI
+- Task-02 ✅: ALL Pydantic models → Zod schemas (6 files, 110 tests)
+  - enums, permissions (bitfield), preview, cache, task models
+  - Helpers: paginateList, isExpired, hasPermission, asyncTaskResponseFromInfo, etc.
+  - All exported via barrel `src/models/index.ts` → `src/index.ts`
+- Commits: `a3fb939` (Task-01), `9e3f049` (Task-02)
 
-## Current Task: Task-01 — TS Package Setup & Tooling
-1. Create `packages/typescript/` with `src/index.ts`, `tests/index.test.ts`
-2. Create `packages/typescript/package.json` (see Task-01 scratchpad for exact spec)
-3. Create `packages/typescript/tsconfig.json` (extends root)
-4. `bun install` from root to link workspace
-5. Install lefthook: `bun add -D lefthook`, create `lefthook.yml` at root
-6. Update root `package.json` scripts (postinstall: lefthook install)
-7. Create `.github/workflows/ci.yml` (polyglot: Python + TypeScript jobs)
-8. Verify: `bun test`, `bunx tsc --noEmit`, `bun run test:py` all pass
+## Current Task: Task-03 — Backend Protocol & MemoryBackend
+Port `backends/base.py` (CacheBackend protocol) and `backends/memory.py` to TypeScript.
+
+1. Create `src/backends/types.ts` — `CacheBackend` interface
+   - Methods: `get(key)`, `set(key, entry)`, `delete(key)`, `exists(key)`, `clear(namespace?)`, `keys(namespace?)`
+   - Reference: `.agent/references/fractal-agents-runtime/ts-src-examples/storage-types.ts`
+   - Python source: `packages/python/src/mcp_refcache/backends/base.py`
+
+2. Create `src/backends/memory.ts` — `MemoryBackend` class
+   - In-memory Map-based storage with TTL expiration
+   - Reference: `.agent/references/fractal-agents-runtime/ts-src-examples/storage-memory.ts`
+   - Python source: `packages/python/src/mcp_refcache/backends/memory.py`
+
+3. Create `src/backends/index.ts` — barrel
+4. Update `src/index.ts` — export CacheBackend type + MemoryBackend
+5. Write tests in `tests/backends.test.ts`
+   - Python reference: `packages/python/tests/test_backends.py`
 
 ## Key Files
-- Goal: `.agent/goals/06-TypeScript-RefCache/scratchpad.md`
-- Task-01: `.agent/goals/06-TypeScript-RefCache/Task-01/scratchpad.md`
-- Reference: `.agent/references/fractal-agents-runtime/` (especially lefthook.yml, ts-app-package.json)
+- Task-03 scratchpad: `.agent/goals/06-TypeScript-RefCache/Task-03/scratchpad.md`
+- Python CacheBackend: `packages/python/src/mcp_refcache/backends/base.py`
+- Python MemoryBackend: `packages/python/src/mcp_refcache/backends/memory.py`
+- TS reference (interface): `.agent/references/fractal-agents-runtime/ts-src-examples/storage-types.ts`
+- TS reference (impl): `.agent/references/fractal-agents-runtime/ts-src-examples/storage-memory.ts`
+- CacheEntry schema: `packages/typescript/src/models/cache.ts` (already done in Task-02)
 
 ## Guidelines
-- Follow `.rules` (TDD, document as you go)
-- Don't break existing Python functionality
-- Use `bun test` (built-in), NOT Vitest
-- Use Lefthook for git hooks, NOT pre-commit
-- No ESLint for v0.1.0 — `tsc --noEmit` is sufficient
-- Run: `cd packages/python && uv run pytest` after any structural changes
+- Follow `.rules` (TDD — write tests first or alongside code)
+- `CacheBackend` must be a TypeScript `interface` (maps to Python `Protocol`)
+- `MemoryBackend` uses `Map<string, CacheEntry>` with TTL eviction
+- Use `CacheEntry` and `isExpired()` from `src/models/cache.ts` (Task-02)
+- Run `bun test` after each change, `bunx tsc --noEmit` for type safety
+- Don't break existing 113 tests or 718 Python tests
 ````
 
 ---
 
-## Previous Session Handoff (2025-01-20)
+## Previous Session Handoffs
+
+### 2025-01-20
 
 ```
 Continue mcp-refcache: Goal 04 - Test Async Timeout in Real MCP Server

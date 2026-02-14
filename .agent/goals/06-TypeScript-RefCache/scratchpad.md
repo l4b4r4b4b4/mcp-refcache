@@ -164,7 +164,7 @@ After extensive experience building custom MCP servers, TypeScript on Bun offers
 |---------|-------------|--------|------------|
 | Task-00 | Monorepo Migration (Bun + Python) | 🟢 Complete | - |
 | Task-01 | Project Setup & Tooling (`bun test`, lefthook, CI) | 🟢 Complete | Task-00 |
-| Task-02 | Models & Zod Schemas | ⚪ Not Started | Task-01 |
+| Task-02 | Models & Zod Schemas | 🟢 Complete | Task-01 |
 | Task-03 | Backend Protocol & MemoryBackend | ⚪ Not Started | Task-02 |
 | Task-04 | RefCache Core Implementation | ⚪ Not Started | Task-03 |
 | Task-05 | Preview System (Token Counting) | ⚪ Not Started | Task-02 |
