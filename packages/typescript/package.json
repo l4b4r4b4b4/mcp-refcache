@@ -26,6 +26,7 @@
     "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {
+    "js-tiktoken": "^1.0.21",
     "zod": "^3.24.0"
   },
   "devDependencies": {

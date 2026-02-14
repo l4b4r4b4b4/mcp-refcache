@@ -128,12 +128,25 @@ export { MemoryBackend } from "./backends/index.js";
 // export type { NamespaceInfo } from "./access/namespace.js";
 
 // ── Preview System ───────────────────────────────────────────────────
-// TODO(Task-05): Export preview generators and size measurers
-// export type { PreviewGenerator } from "./preview/types.js";
-// export { SampleGenerator, PaginateGenerator, TruncateGenerator } from "./preview/generators.js";
-// export { getDefaultGenerator } from "./preview/generators.js";
-// export type { SizeMeasurer, Tokenizer } from "./context/types.js";
-// export { TokenMeasurer, CharacterMeasurer } from "./context/measurers.js";
+export type { PreviewGenerator } from "./preview/index.js";
+
+export {
+  getDefaultGenerator,
+  PaginateGenerator,
+  SampleGenerator,
+  TruncateGenerator,
+} from "./preview/index.js";
+
+// ── Context (Tokenizers & Measurers) ─────────────────────────────────
+export type { SizeMeasurer, Tokenizer } from "./context/index.js";
+
+export {
+  CharacterFallback,
+  CharacterMeasurer,
+  getDefaultTokenizer,
+  TiktokenAdapter,
+  TokenMeasurer,
+} from "./context/index.js";
 
 // ── Core Cache ───────────────────────────────────────────────────────
 // TODO(Task-04): Export RefCache class
