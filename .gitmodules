@@ -19,3 +19,12 @@
 [submodule "examples/bim2sim-mcp"]
 	path = examples/bim2sim-mcp
 	url = https://github.com/l4b4r4b4b4/bim2sim-mcp.git
+[submodule "examples/real-estate-sustainability-mcp"]
+	path = examples/real-estate-sustainability-mcp
+	url = https://github.com/l4b4r4b4b4/real-estate-sustainability-mcp.git
+[submodule "examples/yt-mcp"]
+	path = examples/yt-mcp
+	url = git@github.com:l4b4r4b4b4/yt-api-mcp.git
+[submodule ".agent/goals/04-Async-Timeout-Fallback/hatchet-reference"]
+	path = .agent/goals/04-Async-Timeout-Fallback/hatchet-reference
+	url = https://github.com/hatchet-dev/hatchet.git
