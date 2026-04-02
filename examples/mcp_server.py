@@ -282,6 +282,10 @@ class CacheQueryInput(BaseModel):
         ge=1,
         description="Maximum preview size (tokens/chars). Overrides tool and server defaults.",
     )
+    full: bool = Field(
+        default=False,
+        description="If True, return the complete cached value without preview truncation.",
+    )
 
 
 # =============================================================================
@@ -677,6 +681,7 @@ async def get_cached_result(
     page: int | None = None,
     page_size: int | None = None,
     max_size: int | None = None,
+    full: bool = False,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Retrieve a cached result, optionally with pagination.
@@ -693,6 +698,7 @@ async def get_cached_result(
     Preview Size:
         - max_size: Maximum preview size (tokens/chars). Overrides tool and server defaults.
           Use smaller values for quick summaries, larger for more context.
+        - full: If True, return the complete cached value without preview truncation.
 
 
     **Caching:** Large results are returned as references with previews.
@@ -702,13 +708,29 @@ async def get_cached_result(
     **References:** This tool accepts `ref_id` from previous tool calls.
     """
     validated = CacheQueryInput(
-        ref_id=ref_id, page=page, page_size=page_size, max_size=max_size
+        ref_id=ref_id,
+        page=page,
+        page_size=page_size,
+        max_size=max_size,
+        full=full,
     )
 
     if ctx:
         await ctx.info(f"Retrieving cached result: {validated.ref_id}")
 
     try:
+        if validated.full:
+            full_value = cache.resolve(
+                validated.ref_id,
+                actor="agent",  # Agent access - respects permissions
+            )
+            return {
+                "ref_id": validated.ref_id,
+                "value": full_value,
+                "is_complete": True,
+                "retrieval_mode": "full",
+            }
+
         # Get with pagination and/or custom max_size if specified
         response: CacheResponse = cache.get(
             validated.ref_id,
@@ -723,6 +745,7 @@ async def get_cached_result(
             "preview": response.preview,
             "preview_strategy": response.preview_strategy.value,
             "total_items": response.total_items,
+            "retrieval_mode": "preview",
         }
 
         # Add pagination info if applicable

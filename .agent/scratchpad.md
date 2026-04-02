@@ -2,7 +2,7 @@
 
 ## Current Status: v0.2.0 In Development 🟡
 
-**Last Updated**: 2025-01-20
+**Last Updated**: 2025-07-18
 
 ### Published Package
 
@@ -37,8 +37,12 @@
 | 01 | [Legal-MCP](./goals/01-Legal-MCP/scratchpad.md) | ⚪ Not Started | P2 (Medium) |
 | 02 | [Faster-MCP](./goals/02-Faster-MCP/scratchpad.md) | ⚪ Not Started | P3 (Low) |
 | 04 | [Async-Task-Backends](./goals/04-Async-Timeout-Fallback/scratchpad.md) | 🟢 Tasks 01-05, 09 Done | P1 (High) |
-| 05 | [Real-Estate-Sustainability-MCP](./goals/05-Real-Estate-Sustainability-MCP/scratchpad.md) | 🔴 Not Started | P1 (High) |
+| 05 | [Real-Estate-Sustainability-MCP](./goals/05-Real-Estate-Sustainability-MCP/scratchpad.md) | ⚫ Superseded → 07, 08, 09 | - |
 | 06 | [TypeScript-RefCache](./goals/06-TypeScript-RefCache/scratchpad.md) | 🟡 In Progress | P1 (High) |
+| 07 | [RE-CapEx-OpEx-ROI-MCP](./goals/07-RE-CapEx-OpEx-ROI-MCP/scratchpad.md) | 🔴 Blocked (on 08) | P1 (High) |
+| 08 | [BIM2Sim-MCP-Server](./goals/08-BIM2Sim-MCP-Server/scratchpad.md) | ⚪ Not Started | **P0 (Critical)** |
+| 09 | [Parametric-Optimization-MCP](./goals/09-Parametric-Optimization-MCP/scratchpad.md) | 🔴 Blocked (on 07+08) | P2 (Medium) |
+| 10 | [Release-Patch-Ref-Retrieval-Docs](./goals/10-Release-Patch-Ref-Retrieval-Docs/scratchpad.md) | 🟡 In Progress (Planning) | **P0 (Critical)** |
 
 See [Goals Index](./goals/scratchpad.md) for full tracking.
 
@@ -50,7 +54,86 @@ See [Goals Index](./goals/scratchpad.md) for full tracking.
 
 **04-Async-Task-Backends**: Add async task execution to `@cache.cached()` with pluggable backends. `TaskBackend` protocol enables `MemoryTaskBackend` (ThreadPoolExecutor, MVP) and future `HatchetTaskBackend` (distributed). When computations exceed `async_timeout`, returns reference immediately with "processing" status. Client polls for completion. **Tasks 01-05, 09 complete. 718 tests passing.** Next: Create minimal MCP server example, test in Zed, then release v0.2.0.
 
-**06-TypeScript-RefCache**: Restructure repo into **Bun+Python monorepo** housing both implementations. Port `mcp-refcache` to TypeScript for Node.js MCP ecosystem. Target FastMCP (TypeScript) by @punkpeye. Full feature parity: RefCache, backends (Memory/SQLite/Redis), access control, preview system, async tasks. Plus companion `fastmcp-ts-template` (port of Python template). **Tasks 00–03 complete. Task-04 next (RefCache core).** 171 TS tests passing (61ms). Primary reference: `fractal-agents-runtime` (`.agent/references/fractal-agents-runtime/`). Branch: `feat/monorepo-restructure`.
+**06-TypeScript-RefCache**: Restructure repo into **Bun+Python monorepo** housing both implementations. Port `mcp-refcache` to TypeScript for Node.js MCP ecosystem. Target FastMCP (TypeScript) by @punkpeye. Full feature parity: RefCache, backends (Memory/SQLite/Redis), access control, preview system, async tasks. Plus companion `fastmcp-ts-template` (port of Python template). **Tasks 00–06 complete.** 596 TS tests passing (1331 assertions, 9.5s). Next: Task-07 (SQLite/Redis backends) or Task-09 (FastMCP integration). Primary reference: `fractal-agents-runtime` (`.agent/references/fractal-agents-runtime/`). Branch: `feat/monorepo-restructure`.
+
+**08-BIM2Sim-MCP-Server** (**P0 — start here**): Factor bim2sim out of ifc-mcp into its own MCP server. Foundation layer — bottom-up build order means physics/energy simulation comes first, then financial model (07), then optimization (09). Wraps bim2sim (TEASER fast path + EnergyPlus detailed path) for building energy simulation. Multi-object/multi-system scenario support. DWD TRY weather data by PLZ. eMobility load curve simulation from iB-DOS AP 3.8. Async execution via mcp-refcache for long-running sims. 11 tasks defined.
+
+**07-RE-CapEx-OpEx-ROI-MCP** (blocked on 08): Digital reimplementation of iB-DOS WAT (Wirtschaftlichkeitsanalysetool). DIN 276 CapEx (KG 100–700), BetrKV OpEx (all 17 Betriebskostenarten), energy cost model (kWh-based Arbeitspreis+Grundpreis per carrier), revenue model (Kaltmiete, Warmmiete, Mieterstrom, Fahrstrom), GuV engine (EBITDA→EBIT→EBT→EAT), NPV/IRR/Amortisation, sensitivity analysis. Pydantic data model constructible iteratively by agent MCP tools. WAT Excel reference files archived in `archive/ibdos-wat-reference/`. Data model design can proceed in parallel; validation needs Goal 08 output. 9 tasks defined.
+
+**09-Parametric-Optimization-MCP** (blocked on 07+08): Multi-criteria parametric optimization across simulation + calculation. NSGA-II (pymoo) for Pareto front generation. Surrogate-assisted optimization (GP) to reduce simulation calls. Sobol sensitivity analysis (SALib). Varies building parameters (insulation, HVAC, PV, battery, building standard) against objectives (NPV, IRR, CO₂, tenant cost, primary energy). Capstone layer. 9 tasks defined.
+
+**10-Release-Patch-Ref-Retrieval-Docs** (**P0 — in planning**): Patch release goal for `mcp-refcache` `0.2.1` to fix `full=True` retrieval discoverability and align retrieval behavior/docs across core and non-submodule examples. Scope includes: `@cache.cached()` injected doc updates, FastMCP instruction/guide updates, test hardening as doc contracts, non-submodule example parity (`full=True` + `max_size` forwarding), reusable prompt/doc asset optimizations, and release validation/version sync.
+
+---
+
+## Session Log (2025-07-18, Session 2)
+
+### Completed This Session
+
+1. **Task-04: RefCache Core + Resolution** ✅ (Commit: `6edf014`)
+   - Discussed async vs sync RefCache design — decided async-only (matches CacheBackend interface, no breaking changes to 59 backend tests, idiomatic TS, future-proofs for Redis)
+   - Created `src/resolution.ts` — `isRefId()`, `CircularReferenceError`, `ResolutionResult`, `RefResolver` (deep recursive async resolution with cycle detection), `resolveRefs()`, `resolveKwargs()`, `resolveArgsAndKwargs()` convenience functions. Opaque errors for security (missing vs permission denied are identical messages).
+   - Created `src/cache.ts` — `RefCache` class with full CRUD: `set()`, `get()`, `resolve()`, `delete()`, `exists()`, `clear()`. SHA-256 ref ID generation (`cachename:hexhash`). Constructor injection for backend, measurer, tokenizer, preview generator, permission checker. Key-to-ref/ref-to-key bidirectional mappings. Auto-switch SampleGenerator→PaginateGenerator when page is specified. Hierarchical max_size (server default → per-call override). `setEntryValueForTesting()` for cycle detection tests.
+   - Created `tests/resolution.test.ts` — 67 tests: isRefId (16), ResolutionResult (3), RefResolver (14), convenience functions (9), circular reference detection (6), security (4), edge cases (11), CircularReferenceError class (5)
+   - Created `tests/cache.test.ts` — 122 tests: initialization (8), set (16), get (10), resolve (7), delete (6), exists (4), clear (4), TTL (5), namespaces (4), preview (4), context limiting (8), access control integration (21), pagination auto-switch (5), hierarchical maxSize (3), PreviewResult (3), edge cases (8), ref ID format (4)
+   - Updated `src/index.ts` — barrel exports for RefCache, resolution module, all types/interfaces
+   - Type checking: `bunx tsc --noEmit` clean
+   - Full test suite: **596 TypeScript tests passing** (1331 assertions, 9.5s)
+   - Python tests: **718 passing** (unaffected)
+
+### Test Counts After This Session
+| Test File | Tests | Assertions |
+|-----------|-------|------------|
+| `tests/index.test.ts` | 3 | 3 |
+| `tests/models.test.ts` | 110 | 397 |
+| `tests/backends.test.ts` | 59 | ~447 |
+| `tests/context.test.ts` | 47 | 85 |
+| `tests/preview.test.ts` | 53 | 155 |
+| `tests/access.test.ts` | 135 | 310 |
+| `tests/resolution.test.ts` | 67 | 165 |
+| `tests/cache.test.ts` | 122 | 169 |
+| **Total** | **596** | **1331** |
+
+---
+
+## Session Log (2025-07-18, Session 1)
+
+### Completed This Session
+
+1. **Task-05: Preview System & Context Layer** ✅ (Commit: `8363fcb`)
+   - Ran `tests/context.test.ts` — all 47 tests pass (85 assertions), no fixes needed
+   - Wrote `tests/preview.test.ts` — 53 tests (155 assertions) ported from Python `tests/test_preview.py`:
+     - PreviewGenerator interface compliance (3 tests)
+     - SampleGenerator: small/large list, evenly-spaced, dict, string, nested, empty, binary search, primitives (15 tests)
+     - PaginateGenerator: first/middle/last page, dict, out-of-range, default page size, max_size trimming, empty, non-collection (10 tests)
+     - TruncateGenerator: short unchanged, long truncated, list/dict stringified, empty, exact fit, metadata, primitives (11 tests)
+     - getDefaultGenerator factory (5 tests)
+     - Integration: cross-measurer, consistency, all strategies respect max_size, first/last preservation (9 tests)
+
+2. **Task-06: Access Control System** ✅ (Commit: `7f147c6`)
+   - Created `src/access/actor.ts` — `Actor` interface, `DefaultActor` class (immutable, frozen), factory methods (user, agent, system, fromLiteral), glob pattern matching, `resolveActor()`, `ActorLike` type
+   - Created `src/access/namespace.ts` — `NamespaceInfo` class, `NamespaceResolver` interface, `DefaultNamespaceResolver` (public, session, user, agent, shared patterns)
+   - Created `src/access/checker.ts` — `PermissionDenied` error, `PermissionChecker` interface, `DefaultPermissionChecker` with 6-step resolution (explicit deny → session binding → namespace ownership → explicit allow → owner permissions → role-based), `permissionNames()` helper
+   - Created `src/access/index.ts` — barrel exports
+   - Updated `src/index.ts` — replaced TODO access control comments with real exports
+   - Wrote `tests/access.test.ts` — 135 tests (310 assertions) porting 3 Python test files
+   - Reuses Permission, AccessPolicy, ActorType, policy presets from Task-02 models
+   - Full test suite: **407 TypeScript tests passing** (997 assertions, 3.79s)
+   - Python tests: **718 passing** (unaffected)
+   - Type checking: `bunx tsc --noEmit` clean
+   - Updated Task-06 scratchpad → 🟢 Complete
+   - Updated goal scratchpad task table → Task-06 🟢
+
+### Test Counts After Session 1
+| Test File | Tests | Assertions |
+|-----------|-------|------------|
+| `tests/index.test.ts` | 3 | 3 |
+| `tests/models.test.ts` | 110 | 397 |
+| `tests/backends.test.ts` | 59 | ~447 |
+| `tests/context.test.ts` | 47 | 85 |
+| `tests/preview.test.ts` | 53 | 155 |
+| `tests/access.test.ts` | 135 | 310 |
+| **Total** | **407** | **997** |
 
 ---
 
@@ -58,29 +141,30 @@ See [Goals Index](./goals/scratchpad.md) for full tracking.
 
 ### Completed This Session
 
-1. **Task-03: Backend Protocol & MemoryBackend** ✅
-   - Created `CacheBackend` interface (`src/backends/types.ts`) — direct port of Python's `CacheBackend` protocol
-     - 6 methods: `get`, `set`, `delete`, `exists`, `clear`, `keys`
-     - Synchronous (not async) — `MemoryBackend` has no I/O, no need for `Promise` wrapping
+1. **Task-03: Backend Protocol & MemoryBackend** ✅ (Commit: `c2394d2`)
+   - Created `CacheBackend` interface (`src/backends/types.ts`) — 6 async methods matching Python protocol
    - Created `MemoryBackend` class (`src/backends/memory.ts`) — `Map<string, CacheEntry>` with lazy TTL eviction
-     - Reuses `CacheEntry` and `isExpired()` from Task-02's `src/models/cache.ts`
-     - No locking needed (JS is single-threaded, unlike Python's `threading.RLock`)
-     - No LRU, no background timer, no `close()` — matching Python source exactly
-   - Created barrel (`src/backends/index.ts`) and updated `src/index.ts` with real exports
-   - Wrote 58 comprehensive tests (`tests/backends.test.ts`, 834 lines, 124 assertions):
-     - CacheEntry model tests (7), protocol compliance (2), basic CRUD (14)
-     - TTL expiration (7), namespace-scoped clear (5), namespace-scoped keys (7)
-     - Interface contract tests (7, extensible for future backends), edge cases (9)
-   - **Total: 171 TS tests passing (61ms), 718 Python tests still passing**
+   - All methods return `Promise<T>` for uniform sync/async backend support (Redis, SQLite)
+   - Reuses `CacheEntry` and `isExpired()` from Task-02's `src/models/cache.ts`
+   - 59 tests (`tests/backends.test.ts`), 447 assertions
+   - **Total: 172 TS tests passing (62ms), 718 Python tests still passing**
 
-### Files Created
-- `packages/typescript/src/backends/types.ts` — `CacheBackend` interface (109 lines)
-- `packages/typescript/src/backends/memory.ts` — `MemoryBackend` class (187 lines)
-- `packages/typescript/src/backends/index.ts` — barrel (11 lines)
-- `packages/typescript/tests/backends.test.ts` — 58 tests (834 lines)
+2. **Task-05: Preview System & Context Layer** ✅ (Committed in next session as `8363fcb`)
+   - All source files created, typecheck passes
+   - Context tests written (not yet run), preview tests not yet written
+   - See session log 2025-07-18 for completion details
 
-### Files Modified
-- `packages/typescript/src/index.ts` — replaced backend TODO comments with real exports
+### Files Created (Task-03)
+- `packages/typescript/src/backends/types.ts` — `CacheBackend` async interface
+- `packages/typescript/src/backends/memory.ts` — `MemoryBackend` class
+- `packages/typescript/src/backends/index.ts` — barrel
+- `packages/typescript/tests/backends.test.ts` — 59 tests
+
+### Files Created (Task-05, committed `8363fcb` in next session)
+- `packages/typescript/src/context/` — types, tokenizers, measurers, barrel (4 files)
+- `packages/typescript/src/preview/` — types, generators, barrel (3 files)
+- `packages/typescript/tests/context.test.ts` — 47 tests (473 lines)
+- `packages/typescript/tests/preview.test.ts` — 53 tests (659 lines)
 
 ---
 
@@ -199,56 +283,43 @@ See [Goals Index](./goals/scratchpad.md) for full tracking.
 ## Next Session Handoff
 
 ````
-Goal 06: TypeScript-RefCache — Task-03 Backend Protocol & MemoryBackend
+Continue mcp-refcache: Post Task-04 — Commit & Next Steps
 
 ## Context
 - Goal 06: Porting mcp-refcache to TypeScript/Bun (polyglot monorepo)
-- Tasks 00–02 complete. 113 TS tests passing (36ms). 718 Python tests passing.
-- Branch: `feat/monorepo-restructure` (already checked out)
-- See `.agent/goals/06-TypeScript-RefCache/scratchpad.md` for full goal details
-- See `.agent/scratchpad.md` for session log with all commits
+- Tasks 00–06 ALL complete. 596 TS tests passing (1331 assertions). 718 Python tests passing.
+- Branch: `feat/monorepo-restructure`
+- See `.agent/scratchpad.md` for full session log
+- See `.agent/goals/06-TypeScript-RefCache/scratchpad.md` for goal details
 
-## What Was Done (Previous Session)
-- Task-01 ✅: `packages/typescript/` scaffolded, `bun test`, lefthook, CI
-- Task-02 ✅: ALL Pydantic models → Zod schemas (6 files, 110 tests)
-  - enums, permissions (bitfield), preview, cache, task models
-  - Helpers: paginateList, isExpired, hasPermission, asyncTaskResponseFromInfo, etc.
-  - All exported via barrel `src/models/index.ts` → `src/index.ts`
-- Commits: `a3fb939` (Task-01), `9e3f049` (Task-02)
+## What Was Done
+- Task-04 ✅: RefCache Core + Resolution (NOT YET COMMITTED)
+  - `src/resolution.ts` — isRefId, CircularReferenceError, RefResolver, resolveRefs/Kwargs/ArgsAndKwargs
+  - `src/cache.ts` — RefCache class (set/get/resolve/delete/exists/clear, SHA-256 ref IDs, async)
+  - `tests/resolution.test.ts` — 67 tests
+  - `tests/cache.test.ts` — 122 tests
+  - `src/index.ts` — barrel exports updated
+  - `bunx tsc --noEmit` clean
+- All prior tasks: 00 (monorepo), 01 (setup), 02 (models), 03 (backend), 05 (preview), 06 (access control)
 
-## Current Task: Task-03 — Backend Protocol & MemoryBackend
-Port `backends/base.py` (CacheBackend protocol) and `backends/memory.py` to TypeScript.
-
-1. Create `src/backends/types.ts` — `CacheBackend` interface
-   - Methods: `get(key)`, `set(key, entry)`, `delete(key)`, `exists(key)`, `clear(namespace?)`, `keys(namespace?)`
-   - Reference: `.agent/references/fractal-agents-runtime/ts-src-examples/storage-types.ts`
-   - Python source: `packages/python/src/mcp_refcache/backends/base.py`
-
-2. Create `src/backends/memory.ts` — `MemoryBackend` class
-   - In-memory Map-based storage with TTL expiration
-   - Reference: `.agent/references/fractal-agents-runtime/ts-src-examples/storage-memory.ts`
-   - Python source: `packages/python/src/mcp_refcache/backends/memory.py`
-
-3. Create `src/backends/index.ts` — barrel
-4. Update `src/index.ts` — export CacheBackend type + MemoryBackend
-5. Write tests in `tests/backends.test.ts`
-   - Python reference: `packages/python/tests/test_backends.py`
+## Immediate TODO
+1. **Commit Task-04** — `git add . && git commit -m "feat(ts): implement RefCache core and resolution module (Task-04)"`
+2. **Update goal scratchpad** — Mark Task-04 🟢 in the goal task table
+3. **Decide next task** — Options:
+   - Task-07: SQLite + Redis backends (persistent storage)
+   - Task-08: Async task backend (background execution)
+   - Task-09: FastMCP integration (MCP server template)
+   - Task-10: npm package publishing
 
 ## Key Files
-- Task-03 scratchpad: `.agent/goals/06-TypeScript-RefCache/Task-03/scratchpad.md`
-- Python CacheBackend: `packages/python/src/mcp_refcache/backends/base.py`
-- Python MemoryBackend: `packages/python/src/mcp_refcache/backends/memory.py`
-- TS reference (interface): `.agent/references/fractal-agents-runtime/ts-src-examples/storage-types.ts`
-- TS reference (impl): `.agent/references/fractal-agents-runtime/ts-src-examples/storage-memory.ts`
-- CacheEntry schema: `packages/typescript/src/models/cache.ts` (already done in Task-02)
+- `packages/typescript/src/cache.ts` — RefCache class
+- `packages/typescript/src/resolution.ts` — Resolution utilities
+- `packages/typescript/tests/cache.test.ts` — 122 cache tests
+- `packages/typescript/tests/resolution.test.ts` — 67 resolution tests
 
 ## Guidelines
-- Follow `.rules` (TDD — write tests first or alongside code)
-- `CacheBackend` must be a TypeScript `interface` (maps to Python `Protocol`)
-- `MemoryBackend` uses `Map<string, CacheEntry>` with TTL eviction
-- Use `CacheEntry` and `isExpired()` from `src/models/cache.ts` (Task-02)
-- Run `bun test` after each change, `bunx tsc --noEmit` for type safety
-- Don't break existing 113 tests or 718 Python tests
+- Follow `.rules` (TDD, run `bun test` after changes, `bunx tsc --noEmit`)
+- Don't break existing 596 TS tests or 718 Python tests
 ````
 
 ---

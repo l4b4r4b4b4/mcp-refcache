@@ -1658,6 +1658,18 @@ class TestHierarchicalMaxSize:
         assert "get_cached_result" in my_function.__doc__
         assert "max_size" in my_function.__doc__
 
+    def test_decorator_docstring_mentions_full_retrieval(self) -> None:
+        """Decorated function docstring mentions full retrieval option."""
+        cache = RefCache(name="test")
+
+        @cache.cached(namespace="public", max_size=100)
+        def my_function() -> list[int]:
+            """Original docstring."""
+            return [1, 2, 3]
+
+        assert "get_cached_result(ref_id, full=True)" in my_function.__doc__
+        assert "Full retrieval" in my_function.__doc__
+
 
 class TestAsyncDecoratorRefResolution:
     """Tests for ref_id resolution in async decorated functions."""

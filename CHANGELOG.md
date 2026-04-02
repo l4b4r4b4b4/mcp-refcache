@@ -14,6 +14,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Metrics/observability hooks (Prometheus, OpenTelemetry)
 - Hatchet backend for distributed task execution
 
+## [0.2.1] - 2026-04-02
+
+### Fixed
+
+#### Full Retrieval Discoverability
+- **Decorator-injected docs now include full retrieval guidance** - `@cache.cached()` auto-injected docstrings now explicitly document `get_cached_result(ref_id, full=True)` alongside pagination and preview-size overrides.
+- **FastMCP compact instructions updated** - `cache_instructions()` now documents all retrieval modes:
+  - Full value: `get_cached_result(ref_id, full=True)`
+  - Paginate: `get_cached_result(ref_id, page=..., page_size=...)`
+  - Larger preview: `get_cached_result(ref_id, max_size=...)`
+- **Full cache guide updated** - `cache_guide_prompt()` / `FULL_CACHE_GUIDE` now include explicit full-retrieval usage and quick-reference rows for full and larger-preview retrieval.
+
+#### Documentation Contract Hardening
+- Added regression tests to ensure `full=True` guidance remains present in:
+  - Decorator-injected tool docstrings
+  - Compact FastMCP instructions
+  - Full cache guide + quick reference
+  - Cache doc helper output
+
+### Added
+
+#### FastMCP Documentation Helper
+- **`retrieval_guidance_snippet()`** - Reusable helper for tool/module descriptions documenting canonical retrieval modes (paginate, larger preview, full retrieval).
+
+#### Example Parity (Repository-Owned Surface)
+- `examples/data_tools.py` `get_cached_result` now supports:
+  - `full: bool = False` parameter
+  - full retrieval via `cache.resolve(...)` when `full=True`
+  - explicit `retrieval_mode` markers (`"preview"` / `"full"`)
+
+### Notes
+- This release is a patch-level documentation/discoverability fix with no intended breaking API changes.
+- Submodule examples were intentionally not modified from this repository.
+
 ## [0.2.0] - 2025-01-20
 
 ### Added

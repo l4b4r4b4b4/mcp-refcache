@@ -465,6 +465,25 @@ class TestContextScopedCaching:
             assert ctx.get_state("org_id") == "acme_corp"
             assert ctx.session_id == "session-12345"
 
+            # Test calculator cache input supports full retrieval parameter
+            cache_query = mcp_server.CacheQueryInput(ref_id="calculator:abc123")
+            assert cache_query.full is False
+
+            cache_query_full = mcp_server.CacheQueryInput(
+                ref_id="calculator:abc123",
+                full=True,
+            )
+            assert cache_query_full.full is True
+
+            # Test calculator get_cached_result signature includes full parameter
+            get_cached_fn = (
+                mcp_server.get_cached_result.fn
+                if hasattr(mcp_server.get_cached_result, "fn")
+                else mcp_server.get_cached_result
+            )
+            get_cached_params = get_cached_fn.__annotations__
+            assert "full" in get_cached_params
+
             # Test reset
             MockContext.reset()
             state = MockContext.get_current_state()

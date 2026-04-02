@@ -12,6 +12,7 @@ from mcp_refcache.fastmcp.instructions import (
     cached_tool_description,
     format_response_hint,
     get_full_cache_guide,
+    retrieval_guidance_snippet,
     with_cache_docs,
 )
 
@@ -37,6 +38,16 @@ class TestCompactInstructions:
         assert "Preview Size Control" in COMPACT_INSTRUCTIONS
         assert "Per-call override" in COMPACT_INSTRUCTIONS
         assert "max_size" in COMPACT_INSTRUCTIONS
+
+    def test_compact_instructions_mentions_full_retrieval(self) -> None:
+        """Compact instructions should document full-value retrieval."""
+        assert "full=True" in COMPACT_INSTRUCTIONS
+        assert "Full value" in COMPACT_INSTRUCTIONS
+
+    def test_compact_instructions_mentions_larger_preview(self) -> None:
+        """Compact instructions should document larger preview retrieval."""
+        assert "Larger preview" in COMPACT_INSTRUCTIONS
+        assert "max_size=100000" in COMPACT_INSTRUCTIONS
 
 
 class TestFullCacheGuide:
@@ -71,6 +82,30 @@ class TestFullCacheGuide:
     def test_full_guide_has_private_computation_section(self) -> None:
         """Full guide should explain private computation."""
         assert "Private Computation" in FULL_CACHE_GUIDE
+
+    def test_full_guide_has_full_retrieval_section(self) -> None:
+        """Full guide should include explicit full retrieval guidance."""
+        assert "Getting Full Values" in FULL_CACHE_GUIDE
+        assert 'get_cached_result(ref_id="abc123", full=True)' in FULL_CACHE_GUIDE
+
+    def test_full_guide_has_larger_preview_section(self) -> None:
+        """Full guide should include larger preview guidance."""
+        assert "Getting Larger Previews" in FULL_CACHE_GUIDE
+        assert 'get_cached_result(ref_id="abc123", max_size=100000)' in FULL_CACHE_GUIDE
+
+    def test_full_guide_quick_reference_includes_full_value_row(self) -> None:
+        """Quick reference should include full-value retrieval action."""
+        assert (
+            "| Get full value | `get_cached_result(ref_id, full=True)` |"
+            in FULL_CACHE_GUIDE
+        )
+
+    def test_full_guide_quick_reference_includes_larger_preview_row(self) -> None:
+        """Quick reference should include larger preview retrieval action."""
+        assert (
+            "| Larger preview | `get_cached_result(ref_id, max_size=100000)` |"
+            in FULL_CACHE_GUIDE
+        )
 
 
 class TestCacheInstructionsFunction:
@@ -108,6 +143,26 @@ class TestCacheGuidePrompt:
         assert cache_guide_prompt() == FULL_CACHE_GUIDE
 
 
+class TestRetrievalGuidanceSnippet:
+    """Tests for retrieval_guidance_snippet()."""
+
+    def test_includes_pagination_guidance(self) -> None:
+        """Snippet should include page/page_size guidance."""
+        snippet = retrieval_guidance_snippet()
+        assert "page=..., page_size=..." in snippet
+
+    def test_includes_larger_preview_guidance(self) -> None:
+        """Snippet should include max_size guidance."""
+        snippet = retrieval_guidance_snippet()
+        assert "max_size=..." in snippet
+
+    def test_includes_full_retrieval_guidance(self) -> None:
+        """Snippet should include full=True guidance."""
+        snippet = retrieval_guidance_snippet()
+        assert "full=True" in snippet
+        assert "complete value" in snippet
+
+
 class TestCachedToolDescription:
     """Tests for the cached_tool_description() function."""
 
@@ -121,6 +176,14 @@ class TestCachedToolDescription:
         result = cached_tool_description("Fetches data", returns_reference=True)
         assert "ref_id" in result
         assert "reference" in result.lower()
+
+    def test_returns_reference_mentions_all_retrieval_modes(self) -> None:
+        """Reference docs should mention paginate, max_size, and full retrieval."""
+        result = cached_tool_description("Fetches data", returns_reference=True)
+        assert "get_cached_result" in result
+        assert "page=..., page_size=..." in result
+        assert "max_size=..." in result
+        assert "full=True" in result
 
     def test_supports_pagination_adds_doc(self) -> None:
         """supports_pagination=True adds pagination documentation."""
@@ -190,6 +253,18 @@ class TestWithCacheDocsDecorator:
 
         assert "Caching" in my_func.__doc__
         assert "reference" in my_func.__doc__.lower()
+
+    def test_adds_caching_documentation_includes_full_retrieval(self) -> None:
+        """Caching docs should include full=True guidance."""
+
+        @with_cache_docs(returns_reference=True)
+        def my_func() -> None:
+            """Original."""
+            pass
+
+        assert "full=True" in my_func.__doc__
+        assert "max_size" in my_func.__doc__
+        assert "page=..., page_size=..." in my_func.__doc__
 
     def test_adds_pagination_documentation(self) -> None:
         """Adds pagination documentation when supports_pagination=True."""

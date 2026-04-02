@@ -87,6 +87,18 @@ This returns:
 }
 ```
 
+### Getting Full Values
+Use `full=True` to retrieve the complete cached value without preview truncation:
+```
+get_cached_result(ref_id="abc123", full=True)
+```
+
+### Getting Larger Previews
+Use `max_size` to request a larger preview without retrieving the full value:
+```
+get_cached_result(ref_id="abc123", max_size=100000)
+```
+
 ### Preview Strategies
 The server uses different strategies to create previews:
 - **sample**: Evenly-spaced items from the collection (default for lists)
@@ -201,7 +213,9 @@ references with previews that you can explore incrementally.
 | Action | How |
 |--------|-----|
 | View preview | Included in response |
+| Get full value | `get_cached_result(ref_id, full=True)` |
 | Get page N | `get_cached_result(ref_id, page=N)` |
+| Larger preview | `get_cached_result(ref_id, max_size=100000)` |
 | Pass to tool | Use `ref_id` as parameter |
 | Private compute | Tools resolve references server-side |
 """.strip()
@@ -218,7 +232,9 @@ This server uses reference-based caching for large results.
 - Large results: returned as `{ref_id, preview, total_items}`
 
 **Working with References:**
+- Full value: `get_cached_result(ref_id, full=True)`
 - Paginate: `get_cached_result(ref_id, page=2, page_size=20)`
+- Larger preview: `get_cached_result(ref_id, max_size=100000)`
 - Pass to tools: use `ref_id` as input parameter
 - Some refs are execute-only (use in computation, can't read)
 
@@ -276,6 +292,28 @@ def get_full_cache_guide() -> str:
     return FULL_CACHE_GUIDE
 
 
+def retrieval_guidance_snippet() -> str:
+    """Get reusable reference-retrieval guidance for tool/module docs.
+
+    Returns:
+        A concise guidance snippet that documents all retrieval modes:
+        pagination, larger previews, and full-value retrieval.
+
+    Example:
+        ```python
+        description = (
+            "Large results return references. "
+            + retrieval_guidance_snippet()
+        )
+        ```
+    """
+    return (
+        "Use `get_cached_result(ref_id, page=..., page_size=...)` to paginate, "
+        "`get_cached_result(ref_id, max_size=...)` for a larger preview, or "
+        "`get_cached_result(ref_id, full=True)` for the complete value."
+    )
+
+
 def cached_tool_description(
     base_description: str,
     *,
@@ -315,7 +353,8 @@ def cached_tool_description(
     if returns_reference:
         parts.append(
             "Large results return a reference with preview. "
-            "Use `ref_id` to paginate or pass to other tools."
+            f"{retrieval_guidance_snippet()} "
+            "Use `ref_id` to pass cached data to other tools."
         )
 
     if supports_pagination:
@@ -453,7 +492,8 @@ def with_cache_docs(
 
         if returns_reference:
             additions.append(
-                "**Caching:** Large results are returned as references with previews."
+                "**Caching:** Large results are returned as references with previews. "
+                f"{retrieval_guidance_snippet()}"
             )
 
         if supports_pagination:

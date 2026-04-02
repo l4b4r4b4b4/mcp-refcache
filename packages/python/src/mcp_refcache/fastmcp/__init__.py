@@ -51,6 +51,7 @@ from mcp_refcache.fastmcp.instructions import (
     cached_tool_description,
     format_response_hint,
     get_full_cache_guide,
+    retrieval_guidance_snippet,
     with_cache_docs,
 )
 
@@ -64,5 +65,6 @@ __all__ = [
     "format_response_hint",
     "get_full_cache_guide",
     "register_admin_tools",
+    "retrieval_guidance_snippet",
     "with_cache_docs",
 ]

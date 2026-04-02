@@ -652,6 +652,8 @@ class RefCache:
 - Large results return ref_id + preview; use get_cached_result to paginate
 - All responses include ref_id for future reference
 
+**Full retrieval:** Use `get_cached_result(ref_id, full=True)` to get the complete value.
+
 **Preview Size:** {max_size_doc}. Override per-call with `get_cached_result(ref_id, max_size=...)`."""
             func.__doc__ = original_doc + cache_doc
 
