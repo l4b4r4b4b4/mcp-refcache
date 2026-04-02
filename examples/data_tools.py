@@ -547,6 +547,7 @@ async def get_cached_result(
     page: int | None = None,
     page_size: int | None = None,
     max_size: int | None = None,
+    full: bool = False,
 ) -> dict[str, Any]:
     """Retrieve a cached result from the shared SQLite cache.
 
@@ -558,9 +559,10 @@ async def get_cached_result(
         page: Page number for pagination (1-indexed).
         page_size: Items per page.
         max_size: Maximum preview size.
+        full: If True, return the complete cached value without preview truncation.
 
     Returns:
-        Cached value with metadata.
+        Cached value with metadata, or full value when `full=True`.
     """
     attributes = get_langfuse_attributes()
 
@@ -570,6 +572,16 @@ async def get_cached_result(
         metadata={**attributes["metadata"], "ref_id": ref_id[:50]},
         tags=attributes["tags"],
     ):
+        if full:
+            value = cache.resolve(ref_id, actor="agent")
+            langfuse.flush()
+            return {
+                "ref_id": ref_id,
+                "value": value,
+                "is_complete": True,
+                "retrieval_mode": "full",
+            }
+
         response = cache.get(
             ref_id,
             actor="agent",
@@ -591,6 +603,7 @@ async def get_cached_result(
             "namespace": response.namespace,
             "preview": response.preview,
             "is_complete": is_complete,
+            "retrieval_mode": "preview",
             "preview_strategy": response.preview_strategy.value
             if response.preview_strategy
             else None,

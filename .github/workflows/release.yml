@@ -10,8 +10,11 @@ env:
 
 jobs:
   build:
-    name: Build Package
+    name: Build Python Package
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/python
 
     steps:
       - name: Check out code
@@ -38,8 +41,8 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: python-dist
+          path: packages/python/dist/
 
   github-release:
     name: Create GitHub Release
@@ -55,7 +58,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: python-dist
           path: dist/
 
       - name: Create GitHub Release
@@ -80,7 +83,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: python-dist
           path: dist/
 
       - name: Publish to PyPI

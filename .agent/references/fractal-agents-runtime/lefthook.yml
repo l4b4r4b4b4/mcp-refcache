@@ -1,0 +1,76 @@
+# Lefthook — Git hooks for Fractal Agents Runtime monorepo
+# https://github.com/evilmartians/lefthook
+
+pre-commit:
+  parallel: true
+  commands:
+    bun-version-check:
+      run: bun run check:bun-version
+
+    python-lint:
+      root: apps/python/
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files} && uv run ruff format {staged_files}
+      stage_fixed: true
+
+    ts-lint:
+      root: apps/ts/
+      glob: "*.{ts,tsx}"
+      run: bunx tsc --noEmit
+
+    python-openapi:
+      root: apps/python/
+      glob: "*.py"
+      run: uv run python scripts/generate_openapi.py -o openapi-spec.json
+      stage_fixed: true
+
+    ts-openapi:
+      root: apps/ts/
+      glob: "*.ts"
+      run: bun run scripts/generate-openapi.ts
+      stage_fixed: true
+
+pre-push:
+  parallel: true
+  commands:
+    no-merge-commits:
+      run: |
+        # Reject merge commits — enforce rebase workflow for linear history.
+        # Checks all commits being pushed that aren't on the remote yet.
+        MERGE_COMMITS=$(git log --merges --oneline @{upstream}..HEAD 2>/dev/null)
+        if [ -n "$MERGE_COMMITS" ]; then
+          echo "❌ Merge commits detected — use rebase instead:"
+          echo "$MERGE_COMMITS"
+          echo ""
+          echo "Fix: git rebase --onto <target> <merge-base> <branch>"
+          exit 1
+        fi
+    python-test:
+      root: apps/python/
+      run: >
+        uv run pytest -q --cov --cov-report=json --cov-report=xml --cov-report=term:skip-covered
+        && uv run coverage-threshold
+
+    python-diff-cover:
+      root: apps/python/
+      run: uv run diff-cover coverage.xml --fail-under=73 --compare-branch=origin/development
+
+    ts-test:
+      root: apps/ts/
+      run: bun test
+
+    python-lint-check:
+      root: apps/python/
+      run: uv run ruff check . && uv run ruff format --check .
+
+    ts-type-check:
+      root: apps/ts/
+      run: bunx tsc --noEmit
+
+    python-openapi-validate:
+      root: apps/python/
+      run: uv run python scripts/generate_openapi.py --validate
+
+    ts-openapi-validate:
+      root: apps/ts/
+      run: bun run scripts/generate-openapi.ts --validate

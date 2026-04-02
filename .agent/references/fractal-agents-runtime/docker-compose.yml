@@ -1,0 +1,292 @@
+# docker-compose.yml — Local testing for Fractal Agents Runtime
+#
+# Usage:
+#   1. Build the images (from repo root):
+#        docker compose build python-runtime
+#        docker compose build ts-runtime
+#
+#   2. Copy .env.example to .env and fill in required values:
+#        cp .env.example .env
+#
+#   3. Start the runtimes:
+#        docker compose up python-runtime          # Python only
+#        docker compose up ts-runtime              # TypeScript only
+#        docker compose up python-runtime ts-runtime  # Both
+#
+#   4. Test endpoints:
+#        # Python runtime (port 8081)
+#        curl http://localhost:8081/health
+#        curl http://localhost:8081/info
+#        curl http://localhost:8081/openapi.json
+#
+#        # TypeScript runtime (port 8082)
+#        curl http://localhost:8082/health
+#        curl http://localhost:8082/info
+#
+# Requires:
+#   - Supabase running on supabase_network_immoflow-platform
+#   - .env file with at minimum: OPENAI_API_KEY (or ANTHROPIC_API_KEY)
+#
+# The embeddings, rerankings, and ministral services are optional and
+# disabled by default (replicas: 0). Enable them as needed.
+
+volumes:
+  hf_cache:
+
+networks:
+  supabase:
+    external: true
+    name: supabase_network_immoflow-platform
+
+services:
+  # ===========================================================================
+  # Fractal Agents Runtime — Python/Robyn (port 8081)
+  # ===========================================================================
+  python-runtime:
+    build:
+      context: .
+      dockerfile: .devops/docker/python.Dockerfile
+    image: fractal-agents-runtime-python:local-dev
+    ulimits:
+      nproc:
+        soft: 65535
+        hard: 65535
+    ports:
+      - "8081:8081"
+    env_file: apps/python/.env
+    environment:
+      - ROBYN_HOST=0.0.0.0
+      - ROBYN_PORT=8081
+      - ROBYN_WORKERS=1
+    networks:
+      - default
+      - supabase
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-4", "-f", "http://localhost:8081/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ===========================================================================
+  # Fractal Agents Runtime — TypeScript/Bun (port 3000)
+  # ===========================================================================
+  ts-runtime:
+    build:
+      context: .
+      dockerfile: .devops/docker/ts.Dockerfile
+    image: fractal-agents-runtime-ts:local-dev
+    ports:
+      - "8082:8082"
+    env_file: .env
+    environment:
+      - PORT=8082
+    networks:
+      - default
+      - supabase
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:8082/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ===========================================================================
+  # Optional infrastructure services (disabled by default)
+  # ===========================================================================
+
+  embeddings:
+    deploy:
+      replicas: 0
+    image: ghcr.io/huggingface/text-embeddings-inference:86-1.6
+    volumes:
+      - hf_cache:/.hf_cache
+    ports:
+      - "8011-8014:8080"
+    ipc: host
+    # Replace runtime with devices for CDI
+    devices:
+      - nvidia.com/gpu=all
+    device_cgroup_rules:
+      - "c 195:* rmw"
+      - "c 236:* rmw"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - USE_FLASH_ATTENTION=True
+      - HF_HUB_ENABLE_HF_TRANSFER=1
+      - HF_HOME=/.hf_cache
+      - RUST_LOG=info
+      # Performance tuning for embedding models
+      - OMP_NUM_THREADS=8
+      - MKL_NUM_THREADS=8
+      - TOKENIZERS_PARALLELISM=true
+    restart: no
+    env_file: .env
+    command:
+      [
+        "--model-id",
+        "jinaai/jina-embeddings-v2-base-de",
+        "--hostname",
+        "0.0.0.0",
+        "--port",
+        "8080",
+        "--huggingface-hub-cache",
+        "/.hf_cache",
+        "--tokenization-workers",
+        "16",
+        "--max-concurrent-requests",
+        "1024",
+        "--max-batch-tokens",
+        "65536",
+        "--max-batch-requests",
+        "256",
+        "--max-client-batch-size",
+        "128",
+        "--auto-truncate",
+        "--payload-limit",
+        "10000000",
+      ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "1"
+
+  rerankings:
+    deploy:
+      replicas: 0
+    image: ghcr.io/huggingface/text-embeddings-inference:86-1.6
+    volumes:
+      - hf_cache:/.hf_cache
+    ports:
+      - 8020:8080
+    container_name: rerankings
+    env_file: .env
+    ipc: host
+    # Replace runtime with devices for CDI
+    devices:
+      - nvidia.com/gpu=all
+    device_cgroup_rules:
+      - "c 195:* rmw"
+      - "c 236:* rmw"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - USE_FLASH_ATTENTION=True
+      - HF_HUB_ENABLE_HF_TRANSFER=1
+      - HF_HOME=/.hf_cache
+      - RUST_LOG=info
+      # Performance tuning for reranking models
+      - OMP_NUM_THREADS=8
+      - MKL_NUM_THREADS=8
+      - TOKENIZERS_PARALLELISM=true
+    restart: no
+    command:
+      [
+        "--model-id",
+        "BAAI/bge-reranker-v2-m3",
+        "--hostname",
+        "0.0.0.0",
+        "--port",
+        "8080",
+        "--huggingface-hub-cache",
+        "/.hf_cache",
+        "--tokenization-workers",
+        "16",
+        "--max-concurrent-requests",
+        "1024",
+        "--max-batch-tokens",
+        "32768",
+        "--max-batch-requests",
+        "256",
+        "--max-client-batch-size",
+        "64",
+        "--auto-truncate",
+        "--payload-limit",
+        "4000000",
+      ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "1"
+
+  ministral:
+    ulimits:
+      nofile:
+        soft: 8192
+        hard: 16384
+    pids_limit: 512
+    device_cgroup_rules:
+      - "c 195:* rmw"
+      - "c 236:* rmw"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HUGGING_FACE_HUB_TOKEN=${HUGGINGFACEHUB_API_TOKEN:-your_hf_api_access_token}
+      - HF_HOME=/.hf_cache
+      - VLLM_ATTENTION_BACKEND=FLASHINFER
+      - HF_HUB_ENABLE_HF_TRANSFER=1
+      - MAX_PARALLEL_LOADING_WORKERS=2
+    shm_size: "2gb"
+    deploy:
+      replicas: 1
+    volumes:
+      - hf_cache:/.hf_cache
+    restart: no
+    image: vllm/vllm-openai:cu130-nightly
+    ports:
+      - 7374:80
+    devices:
+      - nvidia.com/gpu=all
+    command:
+      [
+        "mistralai/Ministral-3-3B-Instruct-2512",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "80",
+        "--served-model-name",
+        "ministral-3b-instruct",
+        "--max-model-len",
+        "8192",
+        "--max-num-batched-tokens",
+        "8192",
+        "--kv-cache-dtype",
+        "fp8",
+        "--enable-auto-tool-choice",
+        "--tool-call-parser",
+        "mistral",
+        "--gpu-memory-utilization",
+        "0.75",
+        "--seed",
+        "4272",
+        "--max-num-seqs",
+        "1",
+        "--trust-remote-code",
+      ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://ministral:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5

@@ -10,9 +10,12 @@ env:
   CI: true
 
 jobs:
-  test:
+  test-python:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/python
     strategy:
       fail-fast: false
       matrix:
@@ -45,18 +48,21 @@ jobs:
         continue-on-error: true # Allow mypy failures during initial development
 
       - name: Run tests with coverage
-        run: uv run pytest --cov=src/mcp_refcache --cov-report=xml --cov-report=term --cov-fail-under=80
+        run: ../../scripts/test-python.sh --ci
 
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-xml
-          path: coverage.xml
+          path: packages/python/coverage.xml
 
-  lint:
-    name: Lint
+  lint-python:
+    name: Lint Python
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/python
 
     steps:
       - name: Check out code
@@ -80,6 +86,40 @@ jobs:
       - name: Check formatting with Ruff
         run: uv run ruff format --check .
 
+  test-typescript:
+    name: Test TypeScript
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/typescript
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: cd ../.. && bun install
+
+      - name: Type check
+        run: bunx tsc --noEmit
+
+      - name: Run tests
+        run: bun test
+
+      - name: Build
+        run: bun run build
+
+      - name: Verify dist output
+        run: |
+          test -f dist/index.js || (echo "❌ dist/index.js missing" && exit 1)
+          test -f dist/index.d.ts || (echo "❌ dist/index.d.ts missing" && exit 1)
+          echo "✅ dist/ contains expected outputs"
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
@@ -89,7 +129,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.14.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: "fs"
           scan-ref: "."

@@ -14,6 +14,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Metrics/observability hooks (Prometheus, OpenTelemetry)
 - Hatchet backend for distributed task execution
 
+## [0.2.1] - 2026-04-02
+
+### Fixed
+
+#### Full Retrieval Discoverability
+- **Decorator-injected docs now include full retrieval guidance** - `@cache.cached()` auto-injected docstrings now explicitly document `get_cached_result(ref_id, full=True)` alongside pagination and preview-size overrides.
+- **FastMCP compact instructions updated** - `cache_instructions()` now documents all retrieval modes:
+  - Full value: `get_cached_result(ref_id, full=True)`
+  - Paginate: `get_cached_result(ref_id, page=..., page_size=...)`
+  - Larger preview: `get_cached_result(ref_id, max_size=...)`
+- **Full cache guide updated** - `cache_guide_prompt()` / `FULL_CACHE_GUIDE` now include explicit full-retrieval usage and quick-reference rows for full and larger-preview retrieval.
+
+#### Goal 11: FastMCP Ref-Input Resolution Gap (UX + chaining)
+- **Removed overpromising ref-input claim** - updated injected/tool guidance to clarify that ref-id input compatibility depends on each tool parameter schema/validation; strictly typed parameters may reject string refs before resolution.
+- **Added schema-compatibility guidance to FastMCP docs** - compact/full instruction surfaces now explicitly document ref-input compatibility limits.
+- **Added server-side aggregate tool in calculator example** - new `aggregate` tool supports `sum`, `mean`, `min`, `max`, `count`, and `product` on numeric lists / ref-backed data.
+- **Enabled multi-hop chaining for secret computations** - calculator `compute_with_secret` is now cached so computation outputs produce `ref_id` and can be reused downstream.
+- **Fixed 1D ref usability in matrix workflows** - calculator `matrix_operation` now auto-wraps resolved 1D vectors into 2D row vectors where appropriate.
+
+#### Documentation Contract Hardening
+- Added regression tests to ensure `full=True` guidance remains present in:
+  - Decorator-injected tool docstrings
+  - Compact FastMCP instructions
+  - Full cache guide + quick reference
+  - Cache doc helper output
+- Added regression coverage for schema-dependent ref-input compatibility wording.
+- Added calculator example tests for chaining behavior (`store_secret` → `compute_with_secret` → `get_cached_result(full=True)`).
+
+### Added
+
+#### FastMCP Documentation Helper
+- **`retrieval_guidance_snippet()`** - Reusable helper for tool/module descriptions documenting canonical retrieval modes (paginate, larger preview, full retrieval).
+
+#### Example Parity (Repository-Owned Surface)
+- `examples/data_tools.py` `get_cached_result` now supports:
+  - `full: bool = False` parameter
+  - full retrieval via `cache.resolve(...)` when `full=True`
+  - explicit `retrieval_mode` markers (`"preview"` / `"full"`)
+
+### Notes
+- This release now includes both patch bug classes: retrieval discoverability and Goal 11 ref-input/chaining UX fixes.
+- Changes are backward-compatible and patch-scoped; no intended breaking API changes.
+- Submodule examples were intentionally not modified from this repository.
+
 ## [0.2.0] - 2025-01-20
 
 ### Added

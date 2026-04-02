@@ -1,0 +1,47 @@
+# Lefthook — Polyglot git hooks for mcp-refcache monorepo
+# https://github.com/evilmartians/lefthook
+#
+# Alignment strategy:
+#   - Pre-push mirrors CI checks (lint → test → coverage)
+#   - Coverage is REPORTED in pre-push, ENFORCED in CI
+#   - Both pre-push and CI call scripts/test-python.sh (single source of truth)
+#   - Pre-push uses piped mode with priorities: cheap checks fail fast
+
+pre-commit:
+  parallel: true
+  commands:
+    python-lint:
+      root: packages/python/
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files} && uv run ruff format {staged_files}
+      stage_fixed: true
+
+    ts-typecheck:
+      root: packages/typescript/
+      glob: "*.ts"
+      run: bunx tsc --noEmit
+
+pre-push:
+  piped: true
+  commands:
+    no-merge-commits:
+      priority: 1
+      run: |
+        # Reject merge commits — enforce rebase workflow for linear history.
+        MERGE_COMMITS=$(git log --merges --oneline @{upstream}..HEAD 2>/dev/null)
+        if [ -n "$MERGE_COMMITS" ]; then
+          echo "❌ Merge commits detected — use rebase instead:"
+          echo "$MERGE_COMMITS"
+          echo ""
+          echo "Fix: git rebase --onto <target> <merge-base> <branch>"
+          exit 1
+        fi
+
+    ts-test:
+      priority: 2
+      root: packages/typescript/
+      run: bun test
+
+    python-test:
+      priority: 3
+      run: ./scripts/test-python.sh

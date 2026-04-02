@@ -1,0 +1,539 @@
+# .rules for oap-langgraph-tools-agent
+
+This file defines **hard** (must-follow) and **soft** (recommended) rules for oap-langgraph-tools-agent development. This repository is a fork/variant of the LangChain agent runtime for Open Agent Platform, with MCP servers and a LangConnect RAG tool. These guidelines maximize code quality, safety, and effective AI assistant collaboration.
+
+---
+
+## General Rules
+
+### Hard Rules
+- **No sensitive data exposure** in logs, errors, or code
+- **All changes require review** before merging to main
+- **Never execute untrusted code** or arbitrary downloads
+- **Cite external sources** when adapting code
+- **Document all public APIs** with docstrings and examples
+- **Principle of least privilege** for data, access, and dependencies
+- **No system-altering commands by agents** (nixos-rebuild, nix build, etc.)
+  - Agents may provide commands in code blocks for instruction
+  - User must explicitly approve system state changes
+- **Secrets never committed** to repository
+
+### Soft Rules
+- Prefer declarative, reproducible configurations
+- Document major changes in README/CHANGELOG
+- Use meaningful commit messages (Conventional Commits)
+- Periodically clean `archive/` directories
+- Add comments to non-trivial code
+
+---
+
+## File Editing
+
+### Hard Rules
+- **Prefer edit over overwrite** - Targeted changes unless complete rewrite needed
+- **Preserve existing content** - Add/modify sections, don't replace entire files
+
+### Rationale
+Overwriting loses context, makes diffs harder to review, and risks removing important content.
+
+---
+
+## AI Assistant Communication
+
+### Hard Rules
+- **Never lie or mislead** - Admit uncertainty explicitly
+- **Never appease too quickly** - Challenge ideas, point out flaws
+- **Be brutally honest about tradeoffs** - State costs clearly
+- **Never hide potential issues** - Report risks immediately
+- **Distinguish fact from speculation** clearly
+- **Always** bring up serious doubts about feasibility, practicality, and cost prohibitions
+
+### Soft Rules
+- Be conservative rather than enthusiastic about ideas and visions from the user and yourself
+- Question the users and your own suggestions critically
+- Ask clarifying questions before proposing solutions
+- State assumptions explicitly
+- Warn about complexity upfront
+- Acknowledge simpler alternatives
+
+### Rationale
+Over-confidence leads to flawed ideas, missed edge cases, unfeasible plans, and loss of trust. Professional engineering requires honest, conservative assessment.
+
+---
+
+## Naming Conventions
+
+### Hard Rules
+- **Never use single-letter variable names** - Always descriptive
+- **Never abbreviate names** - `user_repository` not `usr_repo`
+- **No type encoding** - No Hungarian notation
+- **No "I" prefix on interfaces**
+- **No "Base" or "Abstract" class names**
+- **No "Utils" or "Helper" classes** - Organize into proper modules
+- **Include units in names** only when types can't encode them
+
+### Soft Rules
+- Prefer longer, descriptive names
+- If struggling to name, consider if structure is the problem
+
+---
+
+## Python Rules
+
+### Hard Rules
+- **PEP8 formatting** mandatory
+- **Type annotations required** for all public functions/methods/classes
+- **Pydantic models** for public API data structures
+- **Explicit exception handling** - no bare `except:`
+- **≥73% code coverage** maintained
+- **`__all__` alphabetically sorted** (Ruff RUF022)
+
+### Soft Rules
+- Type hints for non-trivial internal variables
+- Use Python 3.12+ features where appropriate (project supports >=3.11,<3.13)
+- Minimal, explicit imports (no wildcards)
+- Prefer `Protocol` over ABC for interfaces
+
+---
+
+## Dependency Management (UV)
+
+### Hard Rules
+- **Use `uv` exclusively** - not pip or pip-compile
+- **Runtime deps** in `[project.dependencies]`
+- **Dev deps** in `[dependency-groups.dev]`
+- **Use `uv add/remove`** - never manually edit pyproject.toml
+- **Commit pyproject.toml + uv.lock together**
+
+### Soft Rules
+- `uv sync` after pulling changes
+- `uv lock --upgrade` for updates
+- Pin critical production dependencies
+
+### Rationale
+UV is 10-100x faster, reproducible, follows PEP 621, single source of truth.
+
+---
+
+## LangGraph Agent Design
+
+### Hard Rules
+- **Single entry point** (e.g., `agent.py:graph`)
+- **Environment variable configuration** - no hardcoded secrets
+- **Graceful shutdown** (SIGTERM/SIGINT handling)
+- **Tool isolation** - independent, stateless where possible
+- **Clear tool descriptions** for LLM understanding
+- **Structured error returns** agents can understand
+- **Reference-based results** for large data (RefCache)
+
+### LangGraph Tool Integration
+- **MCP tools** are fetched dynamically from remote MCP servers
+- **RAG tools** require Supabase authentication token
+- **Tool authentication** must be handled gracefully with user-friendly error messages
+- **Tool descriptions** must be clear for LLM understanding
+
+### Soft Rules
+- 12-factor app principles
+- Fail fast (validate config at startup)
+- Sensible defaults
+- Feature flags via environment
+- Connection pooling for external services
+
+---
+
+## Documentation
+
+### Hard Rules
+- **All public APIs have docstrings** (classes, methods, functions, constants)
+- **Include**: summary, parameters, returns, exceptions
+- **Examples** in docstrings for non-trivial APIs
+- **README accuracy** - shown code must work
+
+### Soft Rules
+- Google-style docstrings
+- Document edge cases and gotchas
+- Include "Getting Started" in README
+- Architecture documentation for contributors
+
+---
+
+## Testing
+
+### Development Approach: Pragmatic Testing
+
+**Workflow:** Implement → Manual Test → Write Tests
+
+This pragmatic approach optimizes for MCP server development:
+1. **Implement feature** - Write the code first
+2. **Manual testing** - Verify it works interactively (run server, test tools)
+3. **Write tests** - Add unit/integration/e2e tests for critical paths
+
+**Rationale:** MCP servers are integration-heavy. Strict TDD adds friction when you're exploring API shapes or wrapping external services. Test after implementation catches real issues without slowing iteration.
+
+### Hard Rules
+- **Test behavior, not implementation** - Tests should survive refactoring
+- **One thing per test** - Focused test cases with clear assertions
+- **Deterministic tests** - Mock time, randomness, I/O for reproducibility
+- **Test error paths** - Exceptions with correct types and messages
+- **Critical paths require tests** - Core functionality must be tested before merge
+
+### Soft Rules
+- Use pytest fixtures for setup/teardown
+- Descriptive test names that explain what's being tested
+- Integration tests for component interaction
+- Test edge cases (empty, None, boundaries)
+- E2E tests for critical user workflows
+- Not everything needs tests - use judgment for trivial code
+
+---
+
+## Design Patterns (Guidelines, Not Mandates)
+
+Design patterns are tools, not rules. Use what fits your project's complexity.
+
+### Hard Rules
+- **No circular dependencies** - Extract third class or use events if detected
+
+### Recommended Patterns (Use When Appropriate)
+
+**For testability:**
+- **Constructor injection** - Pass dependencies explicitly for easy mocking
+- **Protocol-based contracts** - Define interfaces for swappable implementations
+
+**For maintainability:**
+- **Adapter pattern** - Wrap third-party APIs when you might swap providers
+- **Factory pattern** - Use for complex object construction
+
+**For simplicity:**
+- **Direct instantiation** - Fine for single-implementation dependencies
+- **Module-level functions** - Fine for stateless utilities
+- **Global config objects** - Acceptable for read-only configuration
+
+### When to Use DI vs. Simpler Approaches
+
+| Scenario | Recommendation |
+|----------|----------------|
+| Single database backend | Direct instantiation is fine |
+| Multiple possible backends | Use protocols + injection |
+| External API wrapper | Consider adapter if might swap |
+| Simple utility function | Module-level function is fine |
+| Complex initialization | Factory pattern |
+
+### Anti-Patterns (Avoid These)
+- Service locators (hidden dependencies)
+- Setter injection (mutable state after construction)
+- Deep inheritance hierarchies (prefer composition)
+
+---
+
+## AI Assistant Workflow
+
+**THIS WORKFLOW APPLIES TO BOTH GOALS AND TASKS** - Follow all 5 steps for each level of work.
+
+### Hard Rules: Development Process
+
+**Step 1: Gather Context & Research**
+- **Problem Space Research:**
+  - Understand the problem thoroughly before looking at solutions
+  - Read relevant files (README, CONTRIBUTING, existing code)
+  - Review appropriate scratchpad (goal scratchpad or task scratchpad)
+  - Ask clarifying questions about requirements and constraints
+  - Define success criteria and edge cases
+- **Solution Space Research:**
+  - Research existing solutions and libraries (PyPI packages, GitHub repos)
+  - Compare download statistics, maintenance status, community adoption
+  - Evaluate alternatives (pros/cons, tradeoffs)
+  - Check if problem is already solved (don't reinvent the wheel)
+  - Look for industry standards and best practices
+- **Critical:** Complete problem understanding BEFORE solution design
+- MUST NOT jump to implementation without approval
+
+**Step 2: Document Plan**
+- Update appropriate scratchpad:
+  - **For Goals:** Update goal scratchpad with objectives, architecture, task breakdown
+  - **For Tasks:** Update task scratchpad with implementation plan, files to modify, test strategy
+  - Document what and why
+  - Architectural decisions and tradeoffs
+  - Files to modify
+  - Success criteria
+- Use TODO lists with checkboxes
+
+**Step 3: Pitch Approach**
+- Describe high-level approach
+- List specific files and changes
+- Explain design decisions and alternatives
+- Identify risks or breaking changes
+- **Wait for user approval before proceeding**
+
+**Step 4: Implement**
+- **For Goals:** Create task directories and scratchpads if multi-task
+- **For Tasks:** Follow pragmatic workflow: implement → manual test → write tests
+- Small, reviewable changes
+- Run linters after each change, tests before committing
+
+**Step 5: Document & Review**
+- Update docstrings
+- Update README if API changed
+- Add examples
+- **Update scratchpad with completed work** (what was done, not just what will be done)
+- Run full test suite
+
+### Workflow Example
+
+**Scenario:** User requests two goals
+
+**Goal 1 (Simple):**
+1. Gather context, research
+2. Create `goals/01-Goal-Name/scratchpad.md` with plan
+3. Pitch approach, wait for approval
+4. Implement directly (no tasks needed)
+5. Document completion in goal scratchpad
+
+**Goal 2 (Complex):**
+1. Gather context, research
+2. Create `goals/02-Goal-Name/scratchpad.md` with:
+   - Objectives and success criteria
+   - Architecture decisions
+   - **Proposed task breakdown** (list 3-5 tasks)
+3. Pitch approach (including task structure), wait for approval
+4. Create task directories: `Task-01-Name/`, `Task-02-Name/`, etc.
+5. Document task overview in each task scratchpad
+
+**Task 01 of Goal 2:**
+1. Gather context specific to this task
+2. Update `Task-01-Name/scratchpad.md` with:
+   - Implementation plan
+   - Files to create/modify
+   - Test strategy
+   - Expected outcomes
+3. Pitch approach, wait for approval
+4. Implement with pragmatic testing (implement → test manually → write tests)
+5. Document **what was completed** in task scratchpad
+
+**Task 02 of Goal 2:**
+1. Repeat Steps 1-5 for Task 02
+2. Never skip Step 3 (approval) even for "small" tasks
+
+### Proper Tool Usage
+- `read_file` for reading (not cat/head/tail)
+- `edit_file` for modifying (not sed/awk)
+- `grep` tool for searching (not terminal grep)
+- `find_path` for file discovery (not terminal find)
+- **Use appropriate tools for dates** - Never assume dates like "2024" or "today"
+  - Use `terminal` with `date` command to get current date/time
+  - Check file modification times with tools, don't guess
+  - When referencing "recent" changes, verify actual timestamps
+- Terminal ONLY for: tests, linters, builds, package management, git, system checks, date/time queries
+
+### Hard Rules: Code Quality
+- **Run `ruff check . --fix --unsafe-fixes && ruff format .`** before committing
+  - `--unsafe-fixes` is safe here because tests catch behavioral changes
+  - Ruff's "unsafe" label is conservative - common safe fixes include:
+    - **RUF022**: `__all__` sorting (semantically harmless)
+    - **UP036**: Remove version checks (we require Python 3.12+)
+    - **F841**: Remove unused variables (tests catch side effects)
+    - **TCH001-003**: Move imports to `TYPE_CHECKING` (standard imports have no side effects)
+    - **B006**: Mutable default args → `None` (preserves behavior)
+- **Tests must pass** with `pytest`
+- **Maintain ≥73% coverage**
+- **No skipping approval** even for "small" changes
+
+### Anti-Pattern: What NOT to Do
+❌ Create task, immediately implement, then document after
+✅ Create task, document plan, get approval, implement, document completion
+
+---
+
+## Session Handoff
+
+### Hard Rules
+- **Provide prompt in codebox** (triple backticks)
+- **Escape any triple backticks inside the codebox** - Use \`\`\` to prevent breaking the outer codebox
+- **NOT in scratchpad** - only in chat
+- **Keep short** (15-30 lines)
+- **Reference scratchpad** for details
+- **Update scratchpad first**
+
+### Prompt Structure
+```
+[Task Title]
+
+Context: Brief state + reference to scratchpad
+What Was Done: 3-5 bullet points
+Current Task: Clear next steps + specific files
+Guidelines: Session-specific constraints (if any - do NOT repeat .rules)
+```
+
+**Note:** Guidelines section is ONLY for session-specific overrides or additions
+the user provided in chat. Never repeat what's already in .rules file.
+
+---
+
+## Goals & Tasks Structure
+
+### Directory Structure
+```
+.agent/
+└── goals/
+    ├── scratchpad.md       # Goals tracking
+    ├── 00-Template-Goal/   # Template
+    └── 01-10-*/            # Numbered goals
+        ├── scratchpad.md
+        └── Task-01-*/
+            └── scratchpad.md
+```
+
+### Status Tracking
+- 🟢 Complete - Achieved and verified
+- 🟡 In Progress - Actively working
+- 🔴 Blocked - Waiting on dependency
+- ⚪ Not Started - Planned
+- ⚫ Archived - Abandoned
+
+### Best Practices
+- Keep scratchpads current
+- Document decisions with rationale
+- Link related tasks
+- Use acceptance criteria as checklist
+
+### Scratchpad Hierarchy & Content
+- **Goals index** (`.agent/goals/scratchpad.md`) - Central hub for all goals
+  - Goals tracking table with status and priorities
+  - Quick links to individual goal scratchpads
+  - Recent activity log
+  - **DO NOT duplicate** individual goal details
+- **Individual goal scratchpad** (`.agent/goals/NN-*/scratchpad.md`) - Goal-level planning
+  - Objectives, success criteria, architecture decisions
+  - Task breakdown and dependencies
+  - **DO NOT duplicate** task-level implementation details
+- **Task scratchpad** (`.agent/goals/NN-*/Task-NN-*/scratchpad.md`) - Implementation details
+  - Specific code changes, file modifications
+  - Test cases, edge cases
+  - Implementation notes
+- **Reference, don't duplicate** - Link to detailed scratchpads instead of copying content
+
+---
+
+## Project Organization
+
+### Hard Rules
+- **Never commit `archive/`** - gitignored, local only
+- **Use `archive/` for local files** - experiments, old versions, research
+
+### Soft Rules
+- Organize by date or topic
+- Document archived decisions (ADRs)
+- Clean periodically
+
+---
+
+## Nix Development
+
+### Hard Rules
+- **Bash variables in Nix strings**: `''${VAR}` not `${VAR}`
+- **No spaces in parameter expansion**: `${VAR:-default}` not `${VAR: -default}`
+
+### Rationale
+Nix uses `${...}` for interpolation. Escape bash variables with `''${...}`.
+
+---
+
+## Versioning
+
+### Hard Rules
+- **First version is always 0.0.0** - Tests both initial implementation AND release workflow
+- **Publish 0.0.0 to PyPI** - Real-world validation of packaging before iterating
+- **Second release is 0.0.1** - After fixes from 0.0.0 learnings
+- **Never start at 0.1.0 or 1.0.0** - Build confidence through incremental releases
+- **Semantic versioning**: MAJOR.MINOR.PATCH
+- **Sync pyproject.toml and __version__**
+
+### Version Progression
+- `0.0.0` - **First published release** - Tests initial code + packaging workflow
+- `0.0.1` - Bug fixes and improvements from 0.0.0 feedback
+- `0.0.2`, `0.0.3`, etc. - Continued iterations and refinements
+- `0.1.0` - After 5-10 patch releases (0.0.x) and proven stability
+- `0.2.0`, `0.3.0`, etc. - New features with backward compatibility
+- `1.0.0` - Production-ready, stable API, battle-tested in production
+
+### Soft Rules
+- Document all releases in CHANGELOG.md (including 0.0.0)
+- Git tag all releases (v0.0.0, v0.0.1, v0.0.2, etc.)
+- Expect 0.0.0 to have issues - that's the point
+- Wait for at least 5-10 patch releases (0.0.x) before 0.1.0
+- Consider 1.0.0 only after 6+ months of stable 0.x usage
+- Use pre-release versions for testing new features (0.1.0a1, 0.2.0rc1)
+
+### Rationale
+Starting at 0.0.0 accomplishes two critical goals:
+1. **Tests implementation** - Validates the initial code works
+2. **Tests release workflow** - Forces you to get packaging right from day one
+
+Version 0.0.0 signals "experimental test release - expect issues" which is honest.
+Jumping to 0.1.0 implies maturity that new projects haven't earned yet.
+
+The permanent PyPI record of 0.0.0 is a feature, not a bug:
+- Documents the project's honest journey
+- Users understand 0.0.0 means "very early experimental"
+- Forces discipline in getting basics right early
+- One workflow to learn (no TestPyPI vs PyPI confusion)
+
+Build trust through incremental releases: 0.0.0 → 0.0.x → 0.1.0 → 1.0.0
+
+---
+
+## Deployment
+
+### Hard Rules
+- **Tests pass** (100% rate)
+- **Linting passes** (ruff check)
+- **Docker builds** successfully
+- **CHANGELOG updated**
+- **No debug mode** in production
+
+### Soft Rules
+- Test images locally
+- Multi-stage builds for size
+- Pin base image versions
+- Security scans
+- Health checks
+
+---
+
+## Docker Configuration (GHCR Publishing)
+
+### Hard Rules
+- **Non-root user** in production
+- **No secrets in Dockerfile** - use env vars
+- **Explicit EXPOSE** for ports
+- **HEALTHCHECK instruction** for orchestration
+- **Multi-stage builds** for minimal image size
+- **GHCR publishing** with branch/sha/latest tags
+
+### Best Practices
+```dockerfile
+FROM python:3.12-slim AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uv
+RUN /uv venv /venv
+ENV PATH="/venv/bin:$PATH"
+
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN /uv sync --frozen --no-dev
+
+FROM python:3.12-slim
+RUN useradd --create-home appuser
+WORKDIR /app
+COPY --from=builder /venv /venv
+COPY --from=builder /app/.venv /app/.venv
+COPY src/ ./src/
+ENV PATH="/venv/bin:$PATH"
+USER appuser
+EXPOSE 2024
+CMD ["uv", "run", "langgraph", "dev", "--no-browser"]
+```
+
+
+---
+
+**End of .rules**

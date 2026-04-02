@@ -96,6 +96,7 @@ mcp = FastMCP(
 Available tools:
 - calculate: Evaluate mathematical expressions
 - generate_sequence: Generate mathematical sequences (Fibonacci, primes, etc.)
+- aggregate: Compute aggregates (sum/mean/min/max/count/product) from lists or ref_ids
 - matrix_operation: Perform matrix operations (multiply, transpose, etc.)
 - store_secret: Store a secret value for private computation
 - compute_with_secret: Use a secret in computation without revealing it
@@ -282,6 +283,34 @@ class CacheQueryInput(BaseModel):
         ge=1,
         description="Maximum preview size (tokens/chars). Overrides tool and server defaults.",
     )
+    full: bool = Field(
+        default=False,
+        description="If True, return the complete cached value without preview truncation.",
+    )
+
+
+class AggregateInput(BaseModel):
+    """Input model for aggregate operations."""
+
+    data: list[float] | str = Field(
+        description="Numeric list or reference ID to cached numeric list.",
+    )
+    operation: str = Field(
+        default="sum",
+        description="Aggregate operation: sum, mean, min, max, count, product",
+    )
+
+    @field_validator("operation")
+    @classmethod
+    def validate_operation(cls, value: str) -> str:
+        """Validate aggregate operation."""
+        allowed = {"sum", "mean", "min", "max", "count", "product"}
+        normalized = value.lower().strip()
+        if normalized not in allowed:
+            raise ValueError(
+                f"Unsupported aggregate operation '{value}'. Allowed: {', '.join(sorted(allowed))}"
+            )
+        return normalized
 
 
 # =============================================================================
@@ -476,6 +505,56 @@ async def generate_sequence(
 
 
 @mcp.tool
+@cache.cached(namespace="aggregates")
+async def aggregate(
+    data: list[float] | str,
+    operation: str = "sum",
+) -> float:
+    """Compute aggregate statistics on numeric data or cached references.
+
+    Supported operations:
+        - sum
+        - mean
+        - min
+        - max
+        - count
+        - product
+
+    For large inputs, pass a `ref_id` from a previous tool call.
+    """
+    validated = AggregateInput(data=data, operation=operation)
+
+    values = validated.data
+    if isinstance(values, str):
+        # If this is still a string here, it wasn't resolved to a value
+        raise ValueError(
+            "Data reference could not be resolved to numeric values. "
+            "Pass a valid ref_id or a numeric list."
+        )
+
+    if not values:
+        raise ValueError("Aggregate requires a non-empty numeric list")
+
+    if validated.operation == "sum":
+        return float(sum(values))
+    if validated.operation == "mean":
+        return float(sum(values) / len(values))
+    if validated.operation == "min":
+        return float(min(values))
+    if validated.operation == "max":
+        return float(max(values))
+    if validated.operation == "count":
+        return float(len(values))
+    if validated.operation == "product":
+        result = 1.0
+        for value in values:
+            result *= value
+        return float(result)
+
+    raise ValueError(f"Unsupported aggregate operation: {validated.operation}")
+
+
+@mcp.tool
 @cache.cached(namespace="matrices")
 async def matrix_operation(
     matrix_a: list[list[float]] | str,
@@ -501,8 +580,25 @@ async def matrix_operation(
 
     **Private Compute:** Values are processed server-side without exposure.
     """
+    # Normalize 1D vectors to 2D row vectors when refs resolve to flat lists.
+    matrix_a_input = matrix_a
+    if (
+        isinstance(matrix_a_input, list)
+        and matrix_a_input
+        and not isinstance(matrix_a_input[0], list)
+    ):
+        matrix_a_input = [matrix_a_input]
+
+    matrix_b_input = matrix_b
+    if (
+        isinstance(matrix_b_input, list)
+        and matrix_b_input
+        and not isinstance(matrix_b_input[0], list)
+    ):
+        matrix_b_input = [matrix_b_input]
+
     # Validate inputs (ref_ids are resolved by decorator before we get here)
-    validated_a = MatrixInput(data=matrix_a)  # type: ignore[arg-type]
+    validated_a = MatrixInput(data=matrix_a_input)  # type: ignore[arg-type]
     validated_op = MatrixOperation(operation)
 
     # Convert to numpy-like operations (pure Python for simplicity)
@@ -538,18 +634,18 @@ async def matrix_operation(
         result = [[cell * scalar for cell in row] for row in a]
 
     elif validated_op == MatrixOperation.ADD:
-        if matrix_b is None:
+        if matrix_b_input is None:
             raise ValueError("add requires matrix_b")
-        validated_b = MatrixInput(data=matrix_b)  # type: ignore[arg-type]
+        validated_b = MatrixInput(data=matrix_b_input)  # type: ignore[arg-type]
         b = validated_b.data
         if len(a) != len(b) or len(a[0]) != len(b[0]):
             raise ValueError("Matrices must have the same dimensions for addition")
         result = [[a[i][j] + b[i][j] for j in range(len(a[0]))] for i in range(len(a))]
 
     elif validated_op == MatrixOperation.MULTIPLY:
-        if matrix_b is None:
+        if matrix_b_input is None:
             raise ValueError("multiply requires matrix_b")
-        validated_b = MatrixInput(data=matrix_b)  # type: ignore[arg-type]
+        validated_b = MatrixInput(data=matrix_b_input)  # type: ignore[arg-type]
         b = validated_b.data
         if len(a[0]) != len(b):
             raise ValueError(
@@ -615,6 +711,7 @@ def store_secret(name: str, value: float) -> dict[str, Any]:
 
 
 @mcp.tool
+@cache.cached(namespace="computations", resolve_refs=False)
 @with_cache_docs(accepts_references=True, private_computation=True)
 def compute_with_secret(secret_ref: str, expression: str) -> dict[str, Any]:
     """Compute using a secret value without revealing it.
@@ -677,6 +774,7 @@ async def get_cached_result(
     page: int | None = None,
     page_size: int | None = None,
     max_size: int | None = None,
+    full: bool = False,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Retrieve a cached result, optionally with pagination.
@@ -693,6 +791,7 @@ async def get_cached_result(
     Preview Size:
         - max_size: Maximum preview size (tokens/chars). Overrides tool and server defaults.
           Use smaller values for quick summaries, larger for more context.
+        - full: If True, return the complete cached value without preview truncation.
 
 
     **Caching:** Large results are returned as references with previews.
@@ -700,15 +799,34 @@ async def get_cached_result(
     **Pagination:** Use `page` and `page_size` to navigate results.
 
     **References:** This tool accepts `ref_id` from previous tool calls.
+
+    **Ref input compatibility:** Compatibility depends on each tool's input schema.
+    Some strictly typed parameters may reject string ref_ids before resolution.
     """
     validated = CacheQueryInput(
-        ref_id=ref_id, page=page, page_size=page_size, max_size=max_size
+        ref_id=ref_id,
+        page=page,
+        page_size=page_size,
+        max_size=max_size,
+        full=full,
     )
 
     if ctx:
         await ctx.info(f"Retrieving cached result: {validated.ref_id}")
 
     try:
+        if validated.full:
+            full_value = cache.resolve(
+                validated.ref_id,
+                actor="agent",  # Agent access - respects permissions
+            )
+            return {
+                "ref_id": validated.ref_id,
+                "value": full_value,
+                "is_complete": True,
+                "retrieval_mode": "full",
+            }
+
         # Get with pagination and/or custom max_size if specified
         response: CacheResponse = cache.get(
             validated.ref_id,
@@ -723,6 +841,7 @@ async def get_cached_result(
             "preview": response.preview,
             "preview_strategy": response.preview_strategy.value,
             "total_items": response.total_items,
+            "retrieval_mode": "preview",
         }
 
         # Add pagination info if applicable
@@ -1139,7 +1258,12 @@ Each user's data is isolated in their own namespace.
    - `generate_sequence("fibonacci", count=50)` → First 50 Fibonacci numbers
    - `generate_sequence("prime", count=100)` → First 100 prime numbers
 
-3. **Matrix Operations**
+3. **Aggregate Cached Data**
+   Use `aggregate` for server-side reductions:
+   - `aggregate([1,2,3,4], "sum")` → 10
+   - `aggregate(ref_id, "mean")` → average of cached numeric list
+
+4. **Matrix Operations**
    Use `matrix_operation` for linear algebra:
    - `matrix_operation([[1,2],[3,4]], "determinant")` → -2
    - `matrix_operation([[1,2],[3,4]], "transpose")` → [[1,3],[2,4]]
@@ -1147,7 +1271,6 @@ Each user's data is isolated in their own namespace.
 ## Working with Large Results
 
 Large results are cached and returned as references with previews.
-Use `get_cached_result` to paginate:
 
 ```
 # Generate a large sequence
@@ -1156,7 +1279,16 @@ result = generate_sequence("fibonacci", count=1000)
 
 # Get page 2 of results
 get_cached_result("abc123...", page=2, page_size=50)
+
+# Get full value when needed
+get_cached_result("abc123...", full=True)
 ```
+
+### Ref_id Compatibility Notes
+
+- Ref_id support depends on each tool parameter schema.
+- Tools that explicitly accept `str` or union-with-`str` inputs are ref-friendly.
+- Strictly typed numeric parameters (e.g. plain `int`) may reject ref_id strings before resolution.
 
 ## Private Computation (Secrets)
 

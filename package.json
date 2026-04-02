@@ -1,0 +1,31 @@
+{
+  "name": "@mcp-refcache/monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/typescript"
+  ],
+  "scripts": {
+    "postinstall": "lefthook install",
+    "dev:ts": "cd packages/typescript && bun run dev",
+    "build:ts": "cd packages/typescript && bun run build",
+    "test:ts": "cd packages/typescript && bun test",
+    "test:py": "cd packages/python && uv run pytest",
+    "test": "bun run test:ts && bun run test:py",
+    "lint:ts": "cd packages/typescript && bun run lint",
+    "lint:py": "cd packages/python && uv run ruff check .",
+    "lint": "bun run lint:ts && bun run lint:py",
+    "format:py": "cd packages/python && uv run ruff format .",
+    "format:ts": "cd packages/typescript && bunx prettier --write src tests",
+    "typecheck": "cd packages/typescript && bun run typecheck"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "lefthook": "^2.1.1",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}

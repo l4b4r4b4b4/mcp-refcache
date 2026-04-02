@@ -103,24 +103,25 @@ mcp-refcache/
 └── docs/                # Additional documentation
 ```
 
-**Note:** Examples are git submodules and not included in the PyPI package. They demonstrate real-world usage but are optional.
+**Note:** Example servers are managed as git submodules and treated as **references by default**. They are not included in the PyPI package and are intentionally decoupled from core library releases.
 
 ### Using Examples
 
-Examples are included in the source distribution but not installed with pip.
-See the `examples/` directory in the source code for usage patterns.
+Examples are linked as references in this repository and are not installed with pip.
+Use them for discovery, architecture patterns, and integration examples, while shipping core fixes from `mcp-refcache` independently.
 
-<!-- Uncomment when repository is public
-To use the example servers after cloning:
+### Pragmatic Submodule Policy
 
-```bash
-# Clone with submodules
-git clone --recurse-submodules https://github.com/l4b4r4b4b4/mcp-refcache
+- Keep example servers as submodules for discoverability and separation of concerns.
+- Prefer dedicated feature branches inside submodules when synchronized updates are needed.
+- Avoid blocking `mcp-refcache` patch releases on submodule implementation timelines.
+- Treat submodule pointers as optional coordination artifacts, not required for core package validation.
 
-# Or if already cloned:
-git submodule update --init --recursive
-```
--->
+### Submodule Cleanup Status
+
+- Repository policy is now explicit: **reference-by-default** for example servers.
+- Core testing and release validation remain centered on the Python package under `packages/python/`.
+- Submodule edits are coordinated separately unless explicitly required for a given release.
 
 ## Quick Start
 
