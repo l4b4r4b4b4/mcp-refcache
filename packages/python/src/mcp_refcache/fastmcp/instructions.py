@@ -99,6 +99,11 @@ Use `max_size` to request a larger preview without retrieving the full value:
 get_cached_result(ref_id="abc123", max_size=100000)
 ```
 
+### Ref Input Compatibility
+Reference-input support depends on each tool parameter schema and validation behavior.
+Parameters that accept strings (or unions including `str`) are typically ref-compatible.
+Strictly typed parameters (for example plain `int`/`float`) may reject string ref_ids before resolution.
+
 ### Preview Strategies
 The server uses different strategies to create previews:
 - **sample**: Evenly-spaced items from the collection (default for lists)
@@ -216,6 +221,7 @@ references with previews that you can explore incrementally.
 | Get full value | `get_cached_result(ref_id, full=True)` |
 | Get page N | `get_cached_result(ref_id, page=N)` |
 | Larger preview | `get_cached_result(ref_id, max_size=100000)` |
+| Ref input compatibility | Depends on each tool parameter schema/validation |
 | Pass to tool | Use `ref_id` as parameter |
 | Private compute | Tools resolve references server-side |
 """.strip()
@@ -237,6 +243,11 @@ This server uses reference-based caching for large results.
 - Larger preview: `get_cached_result(ref_id, max_size=100000)`
 - Pass to tools: use `ref_id` as input parameter
 - Some refs are execute-only (use in computation, can't read)
+
+**Ref Input Compatibility:**
+- Compatibility depends on each tool parameter schema/validation
+- Parameters that accept `str` (or unions including `str`) are usually ref-friendly
+- Strictly typed parameters may reject string ref_ids before resolution
 
 **Preview Size Control:**
 - Per-call override: `get_cached_result(ref_id, max_size=100)`

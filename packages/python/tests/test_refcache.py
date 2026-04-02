@@ -1670,6 +1670,26 @@ class TestHierarchicalMaxSize:
         assert "get_cached_result(ref_id, full=True)" in my_function.__doc__
         assert "Full retrieval" in my_function.__doc__
 
+    def test_decorator_docstring_mentions_schema_dependent_ref_input_compatibility(
+        self,
+    ) -> None:
+        """Decorated function docstring mentions schema-dependent ref input support."""
+        cache = RefCache(name="test")
+
+        @cache.cached(namespace="public", max_size=100)
+        def my_function(value: int) -> int:
+            """Original docstring."""
+            return value * 2
+
+        assert "Ref input compatibility" in my_function.__doc__
+        assert (
+            "Support depends on the tool's input schema/validation"
+            in my_function.__doc__
+        )
+        assert (
+            "strictly typed parameters may reject string ref_ids" in my_function.__doc__
+        )
+
 
 class TestAsyncDecoratorRefResolution:
     """Tests for ref_id resolution in async decorated functions."""

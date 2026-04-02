@@ -648,9 +648,11 @@ class RefCache:
             cache_doc = f"""
 
 **Caching Behavior:**
-- Any input parameter can accept a ref_id from a previous tool call
+- Parameters that accept reference strings can accept a `ref_id` from a previous tool call
 - Large results return ref_id + preview; use get_cached_result to paginate
 - All responses include ref_id for future reference
+
+**Ref input compatibility:** Support depends on the tool's input schema/validation. Some strictly typed parameters may reject string ref_ids before resolution.
 
 **Full retrieval:** Use `get_cached_result(ref_id, full=True)` to get the complete value.
 

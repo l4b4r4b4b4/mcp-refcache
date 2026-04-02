@@ -6,6 +6,7 @@ requiring the full MCP server infrastructure.
 
 from __future__ import annotations
 
+import asyncio
 import math
 import sys
 from pathlib import Path
@@ -483,6 +484,32 @@ class TestContextScopedCaching:
             )
             get_cached_params = get_cached_fn.__annotations__
             assert "full" in get_cached_params
+
+            # Test ref-chaining: store_secret -> compute_with_secret
+            store_secret_fn = (
+                mcp_server.store_secret.fn
+                if hasattr(mcp_server.store_secret, "fn")
+                else mcp_server.store_secret
+            )
+            compute_with_secret_fn = (
+                mcp_server.compute_with_secret.fn
+                if hasattr(mcp_server.compute_with_secret, "fn")
+                else mcp_server.compute_with_secret
+            )
+
+            stored = store_secret_fn("chain_test_secret", 42.0)
+            assert "ref_id" in stored
+
+            computed = compute_with_secret_fn(stored["ref_id"], "x * 2 + 1")
+            assert "ref_id" in computed
+            assert "value" in computed
+            assert computed["value"]["result"] == 85.0
+
+            # Test cached computation behavior: result can be retrieved via get_cached_result(full=True)
+            retrieved = asyncio.run(get_cached_fn(computed["ref_id"], full=True))
+            assert retrieved["ref_id"] == computed["ref_id"]
+            assert "value" in retrieved
+            assert retrieved["value"]["result"] == 85.0
 
             # Test reset
             MockContext.reset()

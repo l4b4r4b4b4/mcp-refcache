@@ -49,6 +49,12 @@ class TestCompactInstructions:
         assert "Larger preview" in COMPACT_INSTRUCTIONS
         assert "max_size=100000" in COMPACT_INSTRUCTIONS
 
+    def test_compact_instructions_mentions_ref_input_compatibility(self) -> None:
+        """Compact instructions should mention schema-dependent ref input support."""
+        assert "Ref Input Compatibility" in COMPACT_INSTRUCTIONS
+        assert "schema/validation" in COMPACT_INSTRUCTIONS
+        assert "Strictly typed parameters" in COMPACT_INSTRUCTIONS
+
 
 class TestFullCacheGuide:
     """Tests for the full cache guide content."""
@@ -104,6 +110,19 @@ class TestFullCacheGuide:
         """Quick reference should include larger preview retrieval action."""
         assert (
             "| Larger preview | `get_cached_result(ref_id, max_size=100000)` |"
+            in FULL_CACHE_GUIDE
+        )
+
+    def test_full_guide_has_ref_input_compatibility_section(self) -> None:
+        """Full guide should explain schema-dependent ref input compatibility."""
+        assert "Ref Input Compatibility" in FULL_CACHE_GUIDE
+        assert "schema and validation behavior" in FULL_CACHE_GUIDE
+        assert "Strictly typed parameters" in FULL_CACHE_GUIDE
+
+    def test_full_guide_quick_reference_includes_ref_compatibility_row(self) -> None:
+        """Quick reference should include ref input compatibility note."""
+        assert (
+            "| Ref input compatibility | Depends on each tool parameter schema/validation |"
             in FULL_CACHE_GUIDE
         )
 
