@@ -1,7 +1,11 @@
 # Lefthook — Polyglot git hooks for mcp-refcache monorepo
 # https://github.com/evilmartians/lefthook
 #
-# Reference: .agent/references/fractal-agents-runtime/lefthook.yml
+# Alignment strategy:
+#   - Pre-push mirrors CI checks (lint → test → coverage)
+#   - Coverage is REPORTED in pre-push, ENFORCED in CI
+#   - Both pre-push and CI call scripts/test-python.sh (single source of truth)
+#   - Pre-push uses piped mode with priorities: cheap checks fail fast
 
 pre-commit:
   parallel: true
@@ -18,9 +22,10 @@ pre-commit:
       run: bunx tsc --noEmit
 
 pre-push:
-  parallel: true
+  piped: true
   commands:
     no-merge-commits:
+      priority: 1
       run: |
         # Reject merge commits — enforce rebase workflow for linear history.
         MERGE_COMMITS=$(git log --merges --oneline @{upstream}..HEAD 2>/dev/null)
@@ -32,10 +37,11 @@ pre-push:
           exit 1
         fi
 
-    python-test:
-      root: packages/python/
-      run: uv run pytest -q
-
     ts-test:
+      priority: 2
       root: packages/typescript/
       run: bun test
+
+    python-test:
+      priority: 3
+      run: ./scripts/test-python.sh
