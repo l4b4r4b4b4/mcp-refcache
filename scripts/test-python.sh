@@ -11,7 +11,19 @@ set -euo pipefail
 COV_TARGET="src/mcp_refcache"
 COV_THRESHOLD=80
 
-cd packages/python
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+if [[ -d "${REPO_ROOT}/packages/python" ]]; then
+    # Invoked from repo root (or anywhere) via scripts/test-python.sh
+    cd "${REPO_ROOT}/packages/python"
+elif [[ -f "pyproject.toml" && -d "tests" && -d "src" ]]; then
+    # Already in packages/python
+    :
+else
+    echo "Error: cannot locate packages/python from current working directory: $(pwd)" >&2
+    exit 1
+fi
 
 if [[ "${1:-}" == "--ci" ]]; then
     echo "=== CI mode: enforcing coverage >= ${COV_THRESHOLD}% ==="
